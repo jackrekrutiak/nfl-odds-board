@@ -111,6 +111,19 @@ describe('end to end', () => {
     expect(best.every((k) => k === null || k.endsWith('|fanduel'))).toBe(true);
   });
 
+  it('keeps a fully down FanDuel unhealthy (never flips back to a fallback state)', async () => {
+    mock.set('fd', false);
+    await until(async () => ['degraded', 'stale'].includes((await stateOf('fanduel')) ?? ''));
+    const seen = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      seen.add((await stateOf('fanduel')) ?? '');
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect([...seen].filter((s) => s === 'polling' || s === 'live')).toEqual([]);
+    mock.set('fd', true);
+    await until(async () => (await stateOf('fanduel')) === 'live', 10_000);
+  });
+
   it('recovers DraftKings when it comes back', async () => {
     mock.set('dk-rest', true);
     mock.set('dk-ws', true);

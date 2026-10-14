@@ -229,7 +229,7 @@ function cellHtml(gk, market, side) {
   const now = Date.now();
   const other = state.quotes.get(`${slot}|${q.book === 'draftkings' ? 'fanduel' : 'draftkings'}`);
   // "Best" is marked only when it beats the other book; a tie is not an edge.
-  const isBest = key === bestKey && other && !other.suspended && (other.american !== q.american || other.line !== q.line);
+  const isBest = key === bestKey && !q.suspended && !bookIsStale(q.book) && other && !other.suspended && (other.american !== q.american || other.line !== q.line);
   const mv = state.moved.get(key);
   const sinceMove = mv ? now - mv.at : Infinity;
   const bm = state.bestMoved.get(slot);

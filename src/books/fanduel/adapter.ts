@@ -27,6 +27,7 @@ export class FanDuelAdapter implements BookAdapter {
   private pageAttempt = 0;
   private priceAttempt = 0;
   private pricesHealthy = false;
+  private pageHealthy = false; // last structure read succeeded (200 or 304)
   private lastPageAt = 0;
   private lastPregamePollAt = 0;
   private pagePromise: Promise<void> | null = null;
@@ -115,6 +116,7 @@ export class FanDuelAdapter implements BookAdapter {
       this.lastRtt.page = Date.now() - started;
       this.lastPageAt = Date.now();
       if (res.status === 304) {
+        this.pageHealthy = true;
         this.counters.page304++;
         this.h.contact();
         return;
@@ -124,6 +126,7 @@ export class FanDuelAdapter implements BookAdapter {
       const body: unknown = JSON.parse(text);
       this.etag = res.headers.get('etag');
       this.counters.pageReads++;
+      this.pageHealthy = true;
       this.board.loadPage(body, this.pricesHealthy);
       this.h.contact();
       if (this.board.markets.size === 0) this.h.detail = 'page returned no NFL game lines';
@@ -133,6 +136,7 @@ export class FanDuelAdapter implements BookAdapter {
       this.sink.latency('pregame', 'page_rtt', this.lastRtt.page);
     } catch (err) {
       this.counters.pageErrors++;
+      this.pageHealthy = false;
       this.h.error(err);
       if (!this.pricesHealthy) this.h.state = 'degraded';
       this.sink.log('fanduel page failed', { error: String(err) });
@@ -207,7 +211,8 @@ export class FanDuelAdapter implements BookAdapter {
       this.counters.priceErrors++;
       this.pricesHealthy = false;
       this.h.error(err);
-      this.h.state = this.board.markets.size ? 'polling' : 'degraded';
+      // Fall back to page prices only if the page is still answering; otherwise the whole book is down.
+      this.h.state = this.pageHealthy && this.board.markets.size ? 'polling' : 'degraded';
       throw err;
     }
   }
