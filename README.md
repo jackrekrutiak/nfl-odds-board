@@ -207,7 +207,7 @@ The skew estimate checks itself too: `/api/metrics → books.draftkings.clockChe
 
 Free tiers are enough; it must be an **always-on process** (it holds the DK socket), so not Vercel/Netlify functions.
 
-- **Render (free):** New → Blueprint → this repo. `render.yaml` sets Docker, Ohio, `/healthz`. Free instances sleep after 15 idle minutes; set the repo variable `APP_URL` and `.github/workflows/keepalive.yml` pings it every 10 min.
+- **Render (free):** New → Blueprint → this repo. `render.yaml` sets Docker, Ohio, `/healthz`. Free instances sleep after 15 idle minutes, which would drop the DraftKings socket, so on Render the server requests its own public `/healthz` every 10 minutes (`RENDER_EXTERNAL_URL` is set by Render; `SELF_PING_MS=0` turns it off). GitHub's scheduled `keepalive.yml` is a backup only: its 10-minute schedule is best-effort and in practice ran far less often.
 - **Fly.io:** `fly launch --copy-config --no-deploy && fly deploy` (`fly.toml`: iad, 1 always-on machine).
 - **Run `npm run probe` on the host first** (Render shell / `fly ssh console`). After deploying, open `/api/metrics`: both books should be `live`. If DK shows a 403, that host's IPs are refused on the REST host — pick another host or region rather than working around it.
 

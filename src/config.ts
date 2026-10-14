@@ -45,6 +45,12 @@ export const config = {
     pricesEnabled: bool(env.FD_PRICES_ENABLED, true),
   },
 
+  // Render's free tier sleeps after 15 min with no inbound traffic, which would drop the DK socket.
+  // The server requests its own public URL to count as traffic. Render sets RENDER_EXTERNAL_URL;
+  // locally nothing is set, so nothing runs. SELF_PING_MS=0 turns it off.
+  selfPingUrl: env.SELF_PING_URL ?? env.RENDER_EXTERNAL_URL,
+  selfPingMs: num(env.SELF_PING_MS, 10 * 60_000),
+
   staleAfterMs: num(env.STALE_AFTER_MS, 30_000),
   heartbeatMs: num(env.HEARTBEAT_MS, 2_000),
 };

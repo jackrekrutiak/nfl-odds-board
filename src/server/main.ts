@@ -62,7 +62,22 @@ export function buildApp() {
     }
   });
 
+  // Keep a free-tier host awake (see config.selfPingUrl). Goes out through the public URL on
+  // purpose: a request to localhost would never reach the host's proxy, so it wouldn't count.
+  let selfPing: NodeJS.Timeout | null = null;
+  if (config.selfPingUrl && config.selfPingMs > 0) {
+    const target = `${config.selfPingUrl.replace(/\/$/, '')}/healthz`;
+    selfPing = setInterval(() => {
+      fetch(target, { signal: AbortSignal.timeout(15_000) })
+        .then((r) => r.status !== 200 && log('self-ping non-200', { status: r.status }))
+        .catch((err) => log('self-ping failed', { error: String(err) }));
+    }, config.selfPingMs);
+    selfPing.unref();
+    log('self-ping on', { target, everyMs: config.selfPingMs });
+  }
+
   const close = () => {
+    if (selfPing) clearInterval(selfPing);
     for (const a of adapters) a.stop();
     hub.close();
     server.close();
