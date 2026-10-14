@@ -130,8 +130,13 @@ export class FdBoard {
     return { unknown, updated };
   }
 
-  marketIds(): string[] {
-    return [...this.markets.keys()];
+  marketIds(which: 'all' | 'live' | 'pregame' = 'all'): string[] {
+    const out: string[] = [];
+    for (const [id, m] of this.markets) {
+      const live = m.inPlay || this.games.get(m.eventId)?.live === true;
+      if (which === 'all' || (which === 'live') === live) out.push(id);
+    }
+    return out;
   }
 
   normalize(ts: { sourceTs: number; receivedTs: number }): { games: BookGame[]; quotes: Quote[] } {

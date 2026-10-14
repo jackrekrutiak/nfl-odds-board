@@ -31,6 +31,10 @@ export interface MockBooks {
   /** Move a DK line (new selection id, replacedSelectionId). */
   dkLineMove(selIndex: number, points: number, american: number): void;
   fdMove(marketIndex: number, runnerIndex: number, american: number): void;
+  /** Put one game's FanDuel markets in play. */
+  fdSetInPlay(gameIndex: number): void;
+  /** Every getMarketPrices request body seen, as market-id lists. */
+  fdPriceRequests: string[][];
   set(target: 'dk-rest' | 'dk-ws' | 'fd', up: boolean): void;
   close(): Promise<void>;
 }
@@ -113,7 +117,8 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
       req.on('data', (c) => (body += c));
       req.on('end', () => {
         const ids: string[] = JSON.parse(body || '{}').marketIds ?? [];
-        send(200, ids.filter((id) => fdMarkets[id]).map((id) => ({ marketId: id, marketStatus: fdMarkets[id]!.marketStatus, inplay: false, runnerDetails: fdMarkets[id]!.runners })), { 'Cache-Control': 'no-cache' });
+        api.fdPriceRequests.push(ids);
+        send(200, ids.filter((id) => fdMarkets[id]).map((id) => ({ marketId: id, marketStatus: fdMarkets[id]!.marketStatus, inplay: fdMarkets[id]!.inPlay, runnerDetails: fdMarkets[id]!.runners })), { 'Cache-Control': 'no-cache' });
       });
       return;
     }
@@ -167,6 +172,12 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
       r.winRunnerOdds = { americanDisplayOdds: { americanOdds: american }, trueOdds: { decimalOdds: { decimalOdds: dec(american) } } };
       fdVersion++;
     },
+    fdSetInPlay(gi) {
+      const ev = 35000000 + gi;
+      for (const m of Object.values(fdMarkets)) if (m.eventId === ev) m.inPlay = true;
+      fdVersion++;
+    },
+    fdPriceRequests: [],
     set(target, isUp) {
       up[target] = isUp;
       if (target === 'dk-ws' && !isUp) for (const s of sockets) s.terminate();

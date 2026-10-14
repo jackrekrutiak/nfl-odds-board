@@ -27,7 +27,7 @@ beforeAll(async () => {
   const m = `http://127.0.0.1:${mock.port}`;
   Object.assign(process.env, {
     PORT: '0', DK_REST_URL: `${m}/dk/leagues`, DK_WS_URL: `ws://127.0.0.1:${mock.port}/dk/ws`, FD_PAGE_URL: `${m}/fd/page`, FD_PRICES_URL: `${m}/fd/prices`,
-    FD_PRICES_MS: '300', FD_PAGE_MS: '1000', STALE_AFTER_MS: '1500', DK_WS_FALLBACK_AFTER_MS: '300', DK_POLL_MS: '300', HEARTBEAT_MS: '200',
+    FD_PRICES_MS: '600', FD_LIVE_PRICES_MS: '150', FD_PAGE_MS: '1000', STALE_AFTER_MS: '1500', DK_WS_FALLBACK_AFTER_MS: '300', DK_POLL_MS: '300', HEARTBEAT_MS: '200',
   });
   const { buildApp } = await import('../src/server/main.js');
   app = buildApp();
@@ -80,6 +80,20 @@ describe('end to end', () => {
   it('picks up a FanDuel move through the price channel', async () => {
     mock.fdMove(0, 0, 160);
     await until(async () => (await board()).quotes.find((x) => x.book === 'fanduel' && x.market === 'moneyline' && x.american === 160));
+  });
+
+  it('polls in-game FanDuel markets faster than pregame ones', async () => {
+    mock.fdSetInPlay(2);
+    // The price channel learns a game is in play from its own answer, then splits the cadence.
+    await until(async () => ((await metrics()) as unknown as { books: { fanduel: { liveMarkets: number } } }).books.fanduel.liveMarkets > 0);
+    const liveId = '801.350000021';
+    const pregameId = '801.350000001';
+    const from = mock.fdPriceRequests.length;
+    await new Promise((r) => setTimeout(r, 1300));
+    const reqs = mock.fdPriceRequests.slice(from);
+    const liveHits = reqs.filter((ids) => ids.includes(liveId)).length;
+    const pregameHits = reqs.filter((ids) => ids.includes(pregameId)).length;
+    expect(liveHits).toBeGreaterThan(pregameHits);
   });
 
   it('keeps FanDuel updating while DraftKings is down, and says DraftKings is stale', async () => {

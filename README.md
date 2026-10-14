@@ -25,7 +25,7 @@ Requires Node 22+.
 npm install
 npm run demo      # the real server + adapters against local mock books — no network needed
 npm run dev       # against the real books (REGION=us default; REGION=ca for Ontario)
-npm test          # 32 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
+npm test          # 33 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
 npm run probe     # "can this machine reach DK and FD?" — run on your laptop and on the host
 npm run capture   # record real payloads from both books into fixtures/ (then npm test checks them)
 npm run audit     # 15 min: does the DK push feed miss anything vs REST?
@@ -145,6 +145,9 @@ The clock self-check held: 0 of 8 network samples came out negative, and the 60 
 **What was done to bring it down:**
 - **Push, not poll, for DK** — the biggest lever by far. Per-update work is proportional to what changed: a delta re-normalizes only the touched game, never the board.
 - **The uncached price endpoint for FD** instead of the 30 s CDN-cached page: ~30 s → ~2 s.
+- **Smart polling for FD:** in-game markets every 1 s, pregame every 2 s (`FD_LIVE_PRICES_MS`, `FD_PRICES_MS`). Live markets move far more often, so they get the shorter bound without doubling the load on the whole board.
+- **Server work per move is ~73 µs** (parse → apply → normalize → diff → best price → SSE frame), measured on real DK frames: DK entities are indexed by parent so a delta touches one game, and the Eastern-time date formatter is built once (constructing it per game key was 85% of the cost; 105 µs → 14 µs for apply + normalize). JSON parsing is 4 µs per frame, so a faster parser (simdjson) would buy nothing.
+- **Keep-alive and compression:** FD price polls reuse a warm TLS connection (each poll lands inside Node's 4 s keep-alive window); REST and page reads ask for `br` as well as gzip. HTTP/2 isn't used: the latency path to DK is a single persistent socket, FD's two batches each already ride a warm connection, so multiplexing saves nothing measurable.
 - **No batching window** on the way to the browser; each SSE frame is serialized once for all clients; `TCP_NODELAY` on; `X-Accel-Buffering: no` so proxies don't hold frames.
 - **Small payloads:** deltas carry only changed quotes (a typical DK move is a few hundred bytes); the snapshot is sent once per connection.
 - **Reconnects don't reload:** frames carry ids; a reconnecting browser sends `Last-Event-ID` and gets only what it missed from a 1,000-frame ring buffer.

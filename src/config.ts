@@ -39,7 +39,8 @@ export const config = {
     pageUrl: env.FD_PAGE_URL ?? `https://sbapi.${env.FD_STATE ?? p.fdState}.sportsbook.fanduel.${p.fdTld}/api/content-managed-page`,
     pricesUrl: env.FD_PRICES_URL ?? `https://smp.${env.FD_STATE ?? p.fdState}.sportsbook.fanduel.${p.fdTld}/api/sports/fixedodds/readonly/v1/getMarketPrices`,
     origin: env.FD_ORIGIN ?? p.fdOrigin,
-    pricesMs: num(env.FD_PRICES_MS, 2_000), // uncached price channel
+    pricesMs: num(env.FD_PRICES_MS, 2_000), // uncached price channel, pregame markets
+    livePricesMs: num(env.FD_LIVE_PRICES_MS, 1_000), // in-game markets move far more often: poll them faster
     pageMs: num(env.FD_PAGE_MS, 30_000), // structure: matches the page's CDN max-age
     pricesEnabled: bool(env.FD_PRICES_ENABLED, true),
   },

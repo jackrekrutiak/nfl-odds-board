@@ -28,6 +28,7 @@ export class FanDuelAdapter implements BookAdapter {
   private priceAttempt = 0;
   private pricesHealthy = false;
   private lastPageAt = 0;
+  private lastPregamePollAt = 0;
   private pagePromise: Promise<void> | null = null;
   private counters = { pageReads: 0, page304: 0, pageErrors: 0, pricePolls: 0, priceErrors: 0, priceUpdates: 0, unknownSelections: 0 };
   private lastRtt: { page: number | null; prices: number | null } = { page: null, prices: null };
@@ -50,7 +51,9 @@ export class FanDuelAdapter implements BookAdapter {
 
   health(): BookHealth {
     const s = this.h.snapshot();
-    const bound = this.pricesHealthy ? this.cfg.pricesMs + (this.lastRtt.prices ?? 0) : this.cfg.pageMs + 30_000;
+    const hasLive = this.board.marketIds('live').length > 0;
+    const interval = hasLive ? this.cfg.livePricesMs : this.cfg.pricesMs;
+    const bound = this.pricesHealthy ? interval + (this.lastRtt.prices ?? 0) : this.cfg.pageMs + 30_000;
     return { ...s, detail: `${this.pricesHealthy ? 'price channel' : 'page only (price channel down)'} · age ≤ ${(bound / 1000).toFixed(1)} s${s.detail ? ` · ${s.detail}` : ''}` };
   }
 
@@ -64,7 +67,8 @@ export class FanDuelAdapter implements BookAdapter {
       lastRttMs: this.lastRtt,
       pageUrl: this.cfg.pageUrl,
       pricesUrl: this.cfg.pricesUrl,
-      intervalsMs: { prices: this.cfg.pricesMs, page: this.cfg.pageMs },
+      intervalsMs: { pregamePrices: this.cfg.pricesMs, livePrices: this.cfg.livePricesMs, page: this.cfg.pageMs },
+      liveMarkets: this.board.marketIds('live').length,
     };
   }
 
@@ -145,8 +149,10 @@ export class FanDuelAdapter implements BookAdapter {
       try {
         await this.readPrices();
         this.priceAttempt = 0;
-        // Fixed cadence measured from the start of the last request, not its end.
-        this.schedulePrices(Math.max(0, this.cfg.pricesMs - (Date.now() - started)));
+        // Fixed cadence measured from the start of the last request, not its end. With games in
+        // play, tick at the live cadence; pregame markets ride along only when their interval is due.
+        const tick = this.board.marketIds('live').length ? Math.min(this.cfg.livePricesMs, this.cfg.pricesMs) : this.cfg.pricesMs;
+        this.schedulePrices(Math.max(0, tick - (Date.now() - started)));
       } catch {
         this.schedulePrices(backoff(this.priceAttempt++, this.cfg.pricesMs, 30_000));
       }
@@ -154,9 +160,12 @@ export class FanDuelAdapter implements BookAdapter {
   }
 
   private async readPrices(): Promise<void> {
-    const ids = this.board.marketIds();
-    if (!ids.length) return;
     const started = Date.now();
+    const pregameDue = started - this.lastPregamePollAt >= this.cfg.pricesMs - 50;
+    const live = this.board.marketIds('live');
+    const ids = pregameDue ? [...live, ...this.board.marketIds('pregame')] : live;
+    if (!ids.length) return;
+    if (pregameDue) this.lastPregamePollAt = started;
     try {
       const batches: string[][] = [];
       for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
@@ -184,7 +193,7 @@ export class FanDuelAdapter implements BookAdapter {
       const phase = [...this.board.games.values()].some((g) => g.live) ? 'live' : 'pregame';
       this.sink.latency(phase, 'poll_rtt', this.lastRtt.prices);
       // Upper bound on how old a FanDuel number can be when it reaches us.
-      this.sink.latency(phase, 'book_to_server_bound', this.cfg.pricesMs + this.lastRtt.prices);
+      this.sink.latency(phase, 'book_to_server_bound', (phase === 'live' ? this.cfg.livePricesMs : this.cfg.pricesMs) + this.lastRtt.prices);
       this.publish(started);
       // A line move can re-key a selection that only the page knows about yet.
       if (unknown) {
@@ -214,6 +223,7 @@ export class FanDuelAdapter implements BookAdapter {
     return {
       'User-Agent': BROWSER_UA,
       Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate, br', // Node's fetch asks only for gzip/deflate by default
       'Accept-Language': 'en-US,en;q=0.9',
       Origin: this.cfg.origin,
       Referer: `${this.cfg.origin}/`,

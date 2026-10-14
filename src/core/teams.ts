@@ -69,8 +69,10 @@ export function allTeams(): Team[] {
 }
 
 /** Same game at any book → same key. Kickoff date is taken in US Eastern time, where NFL schedules live. */
+const ET_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+
 export function makeGameKey(away: Team, home: Team, startTime: number): string {
-  const d = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(startTime));
+  const d = ET_DATE.format(new Date(startTime)); // formatter built once: constructing one costs far more than formatting
   return `nfl:${d}:${away.id}@${home.id}`;
 }
 

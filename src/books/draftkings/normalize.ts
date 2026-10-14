@@ -27,11 +27,17 @@ export class DkBoard {
   markets = new Map<string, Raw>();
   selections = new Map<string, Raw>();
   invalid = 0;
+  // Parent → children indexes, kept in step with every write, so a delta touches one game's
+  // entities instead of rescanning the whole board.
+  private marketsOf = new Map<string, Set<string>>(); // eventId → marketIds
+  private selsOf = new Map<string, Set<string>>(); // marketId → selectionIds
 
   load(snapshot: unknown): void {
     this.events.clear();
     this.markets.clear();
     this.selections.clear();
+    this.marketsOf.clear();
+    this.selsOf.clear();
     const s = isObj(snapshot) ? snapshot : {};
     for (const e of list(s.events)) this.put(this.events, e);
     for (const m of list(s.markets)) this.put(this.markets, m);
@@ -53,13 +59,13 @@ export class DkBoard {
       const id = idOf(ref);
       const sel = id ? this.selections.get(id) : undefined;
       if (sel) touchMarket(str(sel.marketId));
-      if (id) this.selections.delete(id);
+      if (id) this.drop(this.selections, id);
     }
     for (const ref of list(data.remove?.markets)) {
       const id = idOf(ref);
       if (id) {
         touchMarket(id);
-        this.markets.delete(id);
+        this.drop(this.markets, id);
       }
     }
     for (const ref of list(data.remove?.events)) {
@@ -90,10 +96,10 @@ export class DkBoard {
         const replaced = str(x.replacedSelectionId);
         if (replaced && this.selections.has(replaced)) {
           const old = this.selections.get(replaced)!;
-          this.selections.delete(replaced);
+          this.drop(this.selections, replaced);
           touchMarket(str(old.marketId));
           const id = str(x.id);
-          if (id) this.selections.set(id, { ...old, ...x, id });
+          if (id) this.write(this.selections, id, { ...old, ...x, id });
         }
         const id = this.merge(this.selections, x);
         if (!id) continue;
@@ -109,7 +115,7 @@ export class DkBoard {
       return undefined;
     }
     const id = str(v.id)!;
-    map.set(id, v);
+    this.write(map, id, v);
     return id;
   }
 
@@ -121,25 +127,42 @@ export class DkBoard {
     }
     const id = str(v.id)!;
     const old = map.get(id);
-    map.set(id, old ? { ...old, ...v } : v);
+    this.write(map, id, old ? { ...old, ...v } : v);
     return id;
+  }
+
+  /** The only way entities are written or removed, so the indexes never drift. */
+  private write(map: Map<string, Raw>, id: string, v: Raw): void {
+    const idx = this.indexFor(map);
+    if (idx) {
+      const before = map.get(id);
+      const pOld = before && str(before[idx.key]);
+      const pNew = str(v[idx.key]);
+      if (pOld && pOld !== pNew) idx.of.get(pOld)?.delete(id);
+      if (pNew) (idx.of.get(pNew) ?? idx.of.set(pNew, new Set()).get(pNew)!).add(id);
+    }
+    map.set(id, v);
+  }
+
+  private drop(map: Map<string, Raw>, id: string): void {
+    const idx = this.indexFor(map);
+    const before = map.get(id);
+    const p = idx && before ? str(before[idx.key]) : undefined;
+    if (idx && p) idx.of.get(p)?.delete(id);
+    map.delete(id);
+  }
+
+  private indexFor(map: Map<string, Raw>): { of: Map<string, Set<string>>; key: string } | null {
+    if (map === this.markets) return { of: this.marketsOf, key: 'eventId' };
+    if (map === this.selections) return { of: this.selsOf, key: 'marketId' };
+    return null;
   }
 
   /** Clean games + quotes for the given events (all events if omitted). */
   normalize(eventIds: Iterable<string> | undefined, ts: { sourceTs: number; receivedTs: number }): { games: BookGame[]; quotes: Quote[]; missingEvents: string[] } {
     const ids = eventIds ? [...eventIds] : [...this.events.keys()];
-    const marketsByEvent = new Map<string, Raw[]>();
-    for (const m of this.markets.values()) {
-      const ev = str(m.eventId);
-      if (!ev) continue;
-      (marketsByEvent.get(ev) ?? marketsByEvent.set(ev, []).get(ev)!).push(m);
-    }
-    const selsByMarket = new Map<string, Raw[]>();
-    for (const s of this.selections.values()) {
-      const mk = str(s.marketId);
-      if (!mk) continue;
-      (selsByMarket.get(mk) ?? selsByMarket.set(mk, []).get(mk)!).push(s);
-    }
+    const marketsFor = (ev: string) => [...(this.marketsOf.get(ev) ?? [])].map((k) => this.markets.get(k)).filter((m): m is Raw => !!m);
+    const selsFor = (mk: string) => [...(this.selsOf.get(mk) ?? [])].map((k) => this.selections.get(k)).filter((x): x is Raw => !!x);
 
     const games: BookGame[] = [];
     const quotes: Quote[] = [];
@@ -152,9 +175,9 @@ export class DkBoard {
         continue;
       }
       games.push(game);
-      const picked = pickMainMarkets(marketsByEvent.get(id) ?? []);
+      const picked = pickMainMarkets(marketsFor(id));
       for (const [type, m] of picked) {
-        for (const s of selsByMarket.get(str(m.id)!) ?? []) {
+        for (const s of selsFor(str(m.id)!)) {
           const q = toQuote(game, type, m, s, ts);
           if (q) quotes.push(q);
           else this.invalid++;

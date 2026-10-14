@@ -112,6 +112,7 @@ export class DraftKingsAdapter implements BookAdapter {
         headers: {
           'User-Agent': BROWSER_UA,
           Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate, br', // Node's fetch asks only for gzip/deflate by default
           'Accept-Language': 'en-US,en;q=0.9',
           Origin: 'https://sportsbook.draftkings.com',
           Referer: 'https://sportsbook.draftkings.com/',
