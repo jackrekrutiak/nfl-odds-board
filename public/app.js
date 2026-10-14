@@ -79,6 +79,7 @@ function connect() {
   es.addEventListener('status', (e) => {
     const d = JSON.parse(e.data);
     state.health = d.health; state.metrics = d.metrics; state.lastFrameAt = Date.now();
+    state.hop.push(serverNow() - d.serverTs); trim(state.hop); // server → this screen, sampled every heartbeat
     schedule();
   });
 }
@@ -123,15 +124,27 @@ function streamAlive() { return state.connected && Date.now() - state.lastFrameA
 
 function renderStatus() {
   const el = document.getElementById('status');
-  const chips = state.health.map((h) => {
-    const age = h.lastContactTs ? fmtAge(serverNow() - h.lastContactTs) : 'never';
-    const s = sortNum(state.lat[h.book]);
-    const p50 = s.length ? `${fmtMs(pct(s, 0.5))} p50 to screen` : h.book === 'fanduel' ? '' : 'waiting for a move';
-    const label = { live: h.transport === 'push' ? 'LIVE · push' : 'LIVE · poll', polling: 'POLLING', degraded: 'DEGRADED', stale: 'STALE', connecting: 'CONNECTING', disabled: 'OFF' }[h.state] ?? h.state;
-    return `<span class="chip ${h.state}" title="${esc(h.lastError ?? h.detail ?? '')}"><span class="dot"></span><b>${BOOK_LABEL[h.book]}</b> ${label}
-      <span class="m">contact ${age}${p50 ? ' · ' + p50 : ''}${h.detail && h.book === 'fanduel' ? ' · ' + esc(h.detail.split(' · ').slice(1).join(' · ')) : ''}</span></span>`;
-  });
   const hop = sortNum(state.hop);
+  const hopMs = hop.length ? Math.max(0, pct(hop, 0.5)) : 0;
+  const chips = state.health.map((h) => {
+    const confirmed = h.lastContactTs ? fmtAge(serverNow() - h.lastContactTs) : 'never';
+    const label = { live: h.transport === 'push' ? 'LIVE · push' : 'LIVE · poll', polling: 'POLLING', degraded: 'DEGRADED', stale: 'STALE', connecting: 'CONNECTING', disabled: 'OFF' }[h.state] ?? h.state;
+    // How old a number on screen is right now, per book:
+    //  DraftKings stamps its changes, so: measured book → server (server metrics) + measured server → this screen.
+    //  FanDuel stamps nothing, so: the stated bound (poll interval + round trip) + server → this screen.
+    let fresh = '';
+    if (h.book === 'draftkings') {
+      const lat = state.metrics?.latency ?? {};
+      const b2s = lat['draftkings|live|book_to_server'] ?? lat['draftkings|pregame|book_to_server'];
+      fresh = b2s ? `≈ ${fmtMs(b2s.p50 + hopMs)} behind DraftKings` : 'waiting for a line move to measure';
+    } else {
+      const m = /age ≤ ([\d.]+) s/.exec(h.detail ?? '');
+      fresh = m ? `≤ ${(Number(m[1]) + hopMs / 1000).toFixed(1)} s old` : '';
+    }
+    const stale = h.state === 'stale' || h.state === 'degraded';
+    return `<span class="chip ${h.state}" title="${esc(h.lastError ?? h.detail ?? '')}"><span class="dot"></span><b>${BOOK_LABEL[h.book]}</b> ${label}
+      <span class="m">${stale ? `numbers frozen · last confirmed ${confirmed}` : `${fresh} · confirmed ${confirmed}`}</span></span>`;
+  });
   chips.push(`<span class="chip ${streamAlive() ? 'live' : 'stale'}"><span class="dot"></span><b>This page</b> <span class="m">${streamAlive() ? `server → screen ${hop.length ? fmtMs(pct(hop, 0.5)) : '—'}` : 'reconnecting…'}</span></span>`);
   el.innerHTML = chips.join('');
 

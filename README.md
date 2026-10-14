@@ -211,6 +211,24 @@ Free tiers are enough; it must be an **always-on process** (it holds the DK sock
 - **Fly.io:** `fly launch --copy-config --no-deploy && fly deploy` (`fly.toml`: iad, 1 always-on machine).
 - **Run `npm run probe` on the host first** (Render shell / `fly ssh console`). After deploying, open `/api/metrics`: both books should be `live`. If DK shows a 403, that host's IPs are refused on the REST host — pick another host or region rather than working around it.
 
+## Above & beyond (the optional list)
+
+| Item | Status |
+|---|---|
+| Show the odds moving | **Done.** A changed price flashes green (better for the bettor) or red, the previous price stays struck through beside it for a minute, and a "Latest line moves" panel lists every change from either book. |
+| Latency on the page, per book | **Done.** Each book's chip says how old its numbers are right now: DraftKings "≈ N ms behind DraftKings" (its measured engine → server time plus this page's measured server → screen time), FanDuel "≤ N s old" (poll interval + round trip + server → screen), plus when each was last confirmed. Hovering a price shows when it last moved. |
+| Reconnects, retries, honest staleness | **Done.** Socket reconnects with backoff, REST fallback, `Last-Event-ID` replay for the browser, per-book STALE/DEGRADED chips, greyed cells, a banner with the last-confirmed time, and stale books excluded from Best Price. |
+| Props, alt lines, other leagues | **Designed, not built** (see below). |
+| A third book, or ten; where AI helps | **Written up** in the next section. |
+
+**Props, alt lines and other leagues: why not shipped, and exactly what it takes.** None of them is an architecture change; the adapters, store, best-price and SSE layers already handle any market keyed by game, market and side. They weren't shipped because every one needs parsers checked against real payloads, and an untested parser on the submission link is a bigger risk than the feature is worth.
+
+- **Other leagues:** DraftKings is the same endpoints with a different league id (NBA 42648, NHL 42133, MLB 84240) and subscription; FanDuel is the same page with `customPageId=nba|nhl|mlb`. Needed: a team registry per league (nicknames are not unique across leagues: Giants, Cardinals, Rangers), a `league` field in the game key, market-name aliases ("Puck Line", "Run Line"), one adapter instance per book × league, and a league switch in the UI.
+- **Alt lines:** a market gets a `line` dimension in its key so several lines per side can coexist; DraftKings alt spreads/totals come from their own subcategory subscription, FanDuel from its alternate market types. Best price then compares like-for-like lines only.
+- **Props:** a new market family keyed by player + stat + line, which needs a player registry per league; the same never-guess matching rule applies to player names.
+
+**Hosting, as a future improvement:** the live site runs on Render's free tier, which sleeps after 15 idle minutes; the server pings its own public URL to stay awake. For production: an always-on instance (Render Starter, $7/month, or a small VM) in the region measured closest to the books, so the first viewer never waits for a cold start and the DraftKings socket is never dropped.
+
 ## Scaling: a third book, or ten
 
 - **A third book** = a folder in `src/books/` implementing `BookAdapter` (`start`, `stop`, `health`, `refresh`, `stats`) and emitting snapshots or deltas in the clean model, plus its team spellings in `teams.ts` if they're unusual. Nothing else changes: the store, best price, SSE and UI are keyed by book.
