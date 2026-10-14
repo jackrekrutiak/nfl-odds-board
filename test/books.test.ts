@@ -78,6 +78,24 @@ describe('DraftKings', () => {
     expect(b.invalid).toBeGreaterThan(0);
   });
 
+  it('follows a game into play and out of the board when it ends', () => {
+    const b = new DkBoard();
+    b.load(dkSnapshot());
+    // Kickoff: DK changes the event (status, live state, score) in place; the markets carry on.
+    const kick = b.apply({ change: { events: [{ id: '1', status: 'STARTED', liveGameState: { period: '2nd Quarter' }, eventScore: { mainScore: { homeScore: '10', awayScore: '7' } }, eventScorecard: { mainScorecard: { firstTeamScore: '7', secondTeamScore: '10' } } }] } });
+    const live = b.normalize(kick.touchedEvents, ts);
+    expect(live.games[0]).toMatchObject({ live: true, score: { away: 7, home: 10, period: '2nd Quarter' } });
+    expect(live.quotes).toHaveLength(6);
+    // In-play suspension then a live price move.
+    b.apply({ change: { markets: [{ id: 'm1', isSuspended: true }] } });
+    expect(b.normalize(['1'], ts).quotes.filter((q) => q.market === 'moneyline').every((q) => q.suspended)).toBe(true);
+    b.apply({ change: { markets: [{ id: 'm1', isSuspended: false }], selections: [{ id: 's2', trueOdds: 1.25, displayOdds: { american: '\u2212400' } }] } });
+    expect(b.normalize(['1'], ts).quotes.find((q) => q.market === 'moneyline' && q.side === 'home')).toMatchObject({ american: -400, suspended: false });
+    // Final whistle: DK removes the event, its markets and selections.
+    const end = b.apply({ remove: { events: ['1'], markets: ['m1', 'm2', 'm3', 'm4'], selections: ['s1', 's2', 's3', 's4', 's5', 's6', 's7'] } });
+    expect(b.normalize(end.touchedEvents, ts)).toMatchObject({ games: [], quotes: [], missingEvents: ['1'] });
+  });
+
   it('classifies market names', () => {
     expect(marketTypeOf({ name: 'Total', marketType: { name: 'Total' } })).toBe('total');
     expect(marketTypeOf({ name: 'Team Total Points' })).toBeNull();
@@ -125,6 +143,14 @@ describe('FanDuel', () => {
     expect(b.normalize(ts).quotes.find((q) => q.market === 'spread' && q.side === 'away')!.american).toBe(-125);
     b.loadPage(fdPage(-110), false);
     expect(b.normalize(ts).quotes.find((q) => q.market === 'spread' && q.side === 'away')!.american).toBe(-110);
+  });
+
+  it('marks a game live from an in-play market and keeps it on the board', () => {
+    const b = new FdBoard();
+    const page = fdPage();
+    (page.attachments.markets['a.1'] as Record<string, unknown>).inPlay = true;
+    b.loadPage(page);
+    expect(b.normalize(ts).games[0]!.live).toBe(true);
   });
 
   it('reports unknown selections (re-keyed after a line move) and suspension', () => {

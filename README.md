@@ -25,7 +25,7 @@ Requires Node 22+.
 npm install
 npm run demo      # the real server + adapters against local mock books — no network needed
 npm run dev       # against the real books (REGION=us default; REGION=ca for Ontario)
-npm test          # 30 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
+npm test          # 32 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
 npm run probe     # "can this machine reach DK and FD?" — run on your laptop and on the host
 npm run capture   # record real payloads from both books into fixtures/ (then npm test checks them)
 npm run audit     # 15 min: does the DK push feed miss anything vs REST?

@@ -200,10 +200,12 @@ function toGame(ev: Raw): BookGame | null {
   const status = (str(ev.status) ?? '').toUpperCase();
   const live = status === 'STARTED' || status === 'LIVE' || status === 'IN_PROGRESS';
   const game: BookGame = { book: 'draftkings', gameKey: makeGameKey(away, home, startTime), bookEventId: str(ev.id)!, away, home, startTime, live };
+  // In-play events carry the score twice; eventScore.mainScore names home/away explicitly, so prefer it.
+  const es = isObj(ev.eventScore) && isObj(ev.eventScore.mainScore) ? ev.eventScore.mainScore : null;
   const sc = isObj(ev.eventScorecard) && isObj(ev.eventScorecard.mainScorecard) ? ev.eventScorecard.mainScorecard : null;
-  if (live && sc) {
-    const a = numOr(sc.firstTeamScore);
-    const h = numOr(sc.secondTeamScore);
+  if (live && (es || sc)) {
+    const a = numOr(es?.awayScore) ?? numOr(sc?.firstTeamScore);
+    const h = numOr(es?.homeScore) ?? numOr(sc?.secondTeamScore);
     const period = isObj(ev.liveGameState) ? str(ev.liveGameState.period) : undefined;
     if (a !== undefined && h !== undefined) game.score = { away: a, home: h, ...(period ? { period } : {}) };
   }
