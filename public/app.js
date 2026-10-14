@@ -101,7 +101,10 @@ let pending = false;
 function schedule() {
   if (pending) return;
   pending = true;
-  requestAnimationFrame(() => { pending = false; render(); });
+  const run = () => { pending = false; render(); };
+  // rAF pauses in background tabs; fall back to a timer so the board never freezes there.
+  if (document.visibilityState === 'visible') requestAnimationFrame(run);
+  else setTimeout(run, 0);
 }
 setInterval(schedule, 1000); // ages, flash expiry
 

@@ -128,13 +128,19 @@ FanDuel publishes no timestamps, so there's nothing to measure against: the hone
 
 <!-- TODO: paste the table `npm run measure` prints, ideally once during a live game (TNF Thu / Sunday) and once pregame. -->
 
-| Book | Phase | Stage | p50 | p95 |
-|---|---|---|---|---|
-| DraftKings | pregame | DK engine → our server | _TBD_ | _TBD_ |
-| DraftKings | live | DK engine → our server | _TBD_ | _TBD_ |
-| DraftKings | both | DK socket publish → our server (network) | _TBD_ | _TBD_ |
-| DraftKings | both | our server → browser | _TBD_ | _TBD_ |
-| FanDuel | both | bound: poll interval + price RTT | ≈ 2.1 s | |
+First numbers from the deployed app (Render Ohio, Oct 14, Wednesday afternoon, so pregame only and few DraftKings moves yet; `/api/metrics`):
+
+| Book | Phase | Stage | n | p50 | p95 |
+|---|---|---|---|---|---|
+| DraftKings | pregame | DK engine (`createdTime`) → our server | 8 | 60 ms | 72 ms |
+| DraftKings | pregame | DK socket publish → our server (network) | 8 | 17 ms | 20 ms |
+| DraftKings | live | DK engine → our server | _TBD (TNF)_ | | |
+| DraftKings | both | our server → browser | _TBD_ | | |
+| FanDuel | pregame | bound: poll interval + price RTT (RTT p50 17 ms) | 376 | ≈ 2.02 s | ≈ 2.03 s |
+
+The clock self-check held: 0 of 8 network samples came out negative, and the 60 s REST re-check found 0 prices the socket had missed.
+
+<!-- TODO: re-run `npm run measure -- https://nfl-odds-board.onrender.com 600` during Thursday Night Football and replace the TBD rows. -->
 
 **What was done to bring it down:**
 - **Push, not poll, for DK** — the biggest lever by far. Per-update work is proportional to what changed: a delta re-normalizes only the touched game, never the board.
