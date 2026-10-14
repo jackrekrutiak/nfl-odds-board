@@ -4,38 +4,49 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>NFL Odds Board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header class="top">
+  <header class="topbar">
     <div class="brand">
-      <span class="logo">●</span>
-      <div>
-        <h1>NFL Odds Board</h1>
-        <p class="sub">DraftKings vs FanDuel · moneyline, spread, total · live</p>
-      </div>
+      <span class="mark" aria-hidden="true"></span>
+      <span class="word">odds<b>board</b></span>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <div class="filters">
+    <div class="sports" role="group" aria-label="Sport">
+      <button class="pill on" aria-pressed="true">NFL</button>
+      <button class="pill" disabled title="Designed, not built yet">NBA</button>
+      <button class="pill" disabled title="Designed, not built yet">NHL</button>
+      <button class="pill" disabled title="Designed, not built yet">MLB</button>
     </div>
     <nav class="toggle" role="tablist" aria-label="Board view">
-      <button role="tab" data-view="best" aria-selected="true">Best Price</button>
-      <button role="tab" data-view="draftkings" aria-selected="false">DraftKings</button>
-      <button role="tab" data-view="fanduel" aria-selected="false">FanDuel</button>
+      <button role="tab" data-view="best" aria-selected="true"><span class="star">★</span> Best Price</button>
+      <button role="tab" data-view="draftkings" aria-selected="false"><span class="badge draftkings">DK</span> DraftKings</button>
+      <button role="tab" data-view="fanduel" aria-selected="false"><span class="badge fanduel">FD</span> FanDuel</button>
     </nav>
-  </header>
+  </div>
 
   <section class="status" id="status" aria-live="polite"></section>
   <div class="banner" id="banner" hidden></div>
 
-  <main id="board" class="board">
-    <p class="empty">Connecting…</p>
-  </main>
-
-  <aside class="panel" id="moves-panel">
-    <h2>Latest line moves</h2>
-    <ol id="moves"></ol>
-  </aside>
+  <div class="layout">
+    <main id="board" class="board">
+      <p class="empty">Connecting…</p>
+    </main>
+    <aside class="panel">
+      <h2>Line moves <span class="live-dot" aria-hidden="true"></span></h2>
+      <ol id="moves"></ol>
+    </aside>
+  </div>
 
   <footer class="foot">
-    <span id="conn">connecting</span> · <a href="/api/metrics" target="_blank" rel="noopener">metrics</a> · Odds shown for comparison only.
+    <span id="conn">connecting</span> · <a href="/api/metrics" target="_blank" rel="noopener">metrics</a> · Prices shown for comparison only · ★ = best available line
   </footer>
   <script type="module" src="/app.js"></script>
 </body>
