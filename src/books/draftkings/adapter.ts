@@ -70,6 +70,8 @@ export class DraftKingsAdapter implements BookAdapter {
       invalidEntities: this.board.invalid,
       socket: this.subscribedAt ? 'subscribed' : this.ws ? 'connecting' : 'down',
       clockOffsetMs: this.skew.offset,
+      // Self-check: if the skew estimate were wrong, network samples would go negative.
+      clockCheck: { samples: this.skew.samples, negativeCorrected: this.skew.negativeWire },
       lastSnapshotMs: this.lastSnapshotMs,
       snapshotUrl: this.snapshotUrl,
       wsUrl: this.cfg.wsUrl,

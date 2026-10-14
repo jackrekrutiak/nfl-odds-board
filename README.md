@@ -25,8 +25,10 @@ Requires Node 22+.
 npm install
 npm run demo      # the real server + adapters against local mock books — no network needed
 npm run dev       # against the real books (REGION=us default; REGION=ca for Ontario)
-npm test          # 30 tests, ~3 s, incl. end-to-end against the mock books
+npm test          # 30 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
 npm run probe     # "can this machine reach DK and FD?" — run on your laptop and on the host
+npm run capture   # record real payloads from both books into fixtures/ (then npm test checks them)
+npm run audit     # 15 min: does the DK push feed miss anything vs REST?
 npm run measure -- https://<your-app> 600   # watch a running board, print the latency table
 ```
 
@@ -147,13 +149,24 @@ FanDuel publishes no timestamps, so there's nothing to measure against: the hone
 
 <!-- TODO: confirm each of these with `npm run probe` from your machine and from the host, and edit to match what you actually saw. -->
 
-- **DraftKings — bot protection (Akamai).** The REST host fingerprints the TLS client: `curl` and Python's default HTTP stack get `403 Access Denied` even with browser headers, while Node's built-in `fetch` is accepted. That's one reason this is Node. Requests send the headers a browser tab would (`Origin`, `Referer`, UA). Cloud IPs can also be refused on the REST host while the socket host accepts them; if that happens, the adapter shows **DEGRADED** with the 403 rather than failing silently, and `npm run probe` on the host shows it before you deploy.
+- **DraftKings — bot protection (Akamai).** The REST host fingerprints the TLS client: `curl` and Python's default HTTP stack get `403 Access Denied` even with browser headers, while Node's built-in `fetch` is accepted. That's one reason this is Node. Requests send the headers a browser tab would (`Origin`, `Referer`, UA). Cloud IPs can also be refused on the REST host while the socket host accepts them. That's DraftKings' call to make, so the app doesn't try to get around it: the adapter shows **DEGRADED** with the 403 rather than failing silently, `npm run probe` on the host shows it before you deploy, and the fix is a host DraftKings serves normally.
 - **DraftKings — geo.** Each region is a separate site (`dkusnj`, `dkcaon`, …); a Canadian IP is served the Ontario product. Configurable via `REGION`.
 - **DraftKings — auth.** None: the socket accepts an empty `jwt`, REST needs no cookie, so nothing expires. If DK starts requiring a token, the subscribe isn't acked within 10 s → the socket is abandoned, the adapter falls back to REST polling, and the page says so; close code `4000` (DK's "bad params") backs off 30 s instead of hammering.
 - **FanDuel — geo.** The US host refuses Canadian IPs; Canada uses the `.ca` Ontario host. `REGION=ca`.
 - **FanDuel — caching.** The page's 30 s CloudFront cache is the real limit, not a rate limit — hence the price channel.
 - **FanDuel — re-keyed selections.** A line move can produce a selection id only the page knows yet; an unknown id from the price channel forces an early page read.
 - **Rate limits.** None hit at these cadences. 429s back off; failures back off exponentially with jitter.
+
+## Proving it on real data
+
+Mock books prove the plumbing; these prove the parsers and the delta engine against what the books actually send.
+
+- **`npm run capture`** records a DraftKings snapshot, every socket frame for 60 s (`CAPTURE_SECONDS=300` for more), the FanDuel page and its prices into `fixtures/`. `test/real-fixtures.test.ts` then checks that every game maps with nothing invalid, that **replaying every captured delta ends on exactly the board a fresh read of the same state gives**, and that every FanDuel game finds its DraftKings twin by game key.
+- **`npm run audit`** builds a DraftKings board from the socket alone, never re-synced, and compares it with a REST read every 5 s for 15 minutes. A price still different on the next comparison is a miss.
+
+<!-- TODO: paste the audit result line, e.g. "20 min, 31 price changes, 0 missed". -->
+
+The skew estimate checks itself too: `/api/metrics → books.draftkings.clockCheck` counts network samples that came out negative (a frame "arriving before it was sent"). That should sit at ~0 after the first few frames; if it climbs, the latency numbers aren't trustworthy.
 
 ## Failure handling
 
@@ -187,7 +200,7 @@ Free tiers are enough; it must be an **always-on process** (it holds the DK sock
 
 - **Render (free):** New → Blueprint → this repo. `render.yaml` sets Docker, Ohio, `/healthz`. Free instances sleep after 15 idle minutes; set the repo variable `APP_URL` and `.github/workflows/keepalive.yml` pings it every 10 min.
 - **Fly.io:** `fly launch --copy-config --no-deploy && fly deploy` (`fly.toml`: iad, 1 always-on machine).
-- After deploying, open `/api/metrics`: both books should be `live`. If DK shows a 403, the host's IP is being refused — try the other host or region.
+- **Run `npm run probe` on the host first** (Render shell / `fly ssh console`). After deploying, open `/api/metrics`: both books should be `live`. If DK shows a 403, that host's IPs are refused on the REST host — pick another host or region rather than working around it.
 
 ## Scaling: a third book, or ten
 

@@ -10,7 +10,9 @@
     "demo": "tsx scripts/demo.ts",
     "probe": "tsx scripts/probe.ts",
     "measure": "tsx scripts/measure.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "capture": "tsx scripts/capture.ts",
+    "audit": "tsx scripts/audit.ts"
   },
   "license": "MIT",
   "dependencies": {

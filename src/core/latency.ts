@@ -41,6 +41,9 @@ export function pct(sorted: number[], p: number): number {
 export class SkewEstimator {
   private offsetMs = 0; // bookClock - ourClock
   private known = false;
+  /** Frames that looked like they arrived before they were sent (should stay ~0 once calibrated). */
+  negativeWire = 0;
+  samples = 0;
 
   fromRoundTrip(sentAt: number, receivedAt: number, bookTs: number): void {
     if (!Number.isFinite(bookTs)) return;
@@ -52,7 +55,11 @@ export class SkewEstimator {
   observe(bookPublishTs: number, receivedAt: number): void {
     if (!Number.isFinite(bookPublishTs)) return;
     const wire = receivedAt - (bookPublishTs - this.offsetMs);
-    if (wire < 0) this.offsetMs += wire; // impossible: our estimate is off; nudge it
+    this.samples++;
+    if (wire < 0) {
+      this.negativeWire++;
+      this.offsetMs += wire; // impossible: our estimate is off; nudge it
+    }
     this.known = true;
   }
 
