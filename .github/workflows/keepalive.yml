@@ -1,0 +1,12 @@
+name: keepalive
+# Render's free tier sleeps after 15 idle minutes, which would drop the DraftKings socket.
+# Set the repository variable APP_URL (Settings → Variables) to your deployed URL.
+on:
+  schedule: [{ cron: '*/10 * * * *' }]
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.APP_URL != '' }}
+    steps:
+      - run: curl -fsS "${{ vars.APP_URL }}/healthz" > /dev/null

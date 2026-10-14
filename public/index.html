@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NFL Odds Board</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">●</span>
+      <div>
+        <h1>NFL Odds Board</h1>
+        <p class="sub">DraftKings vs FanDuel · moneyline, spread, total · live</p>
+      </div>
+    </div>
+    <nav class="toggle" role="tablist" aria-label="Board view">
+      <button role="tab" data-view="best" aria-selected="true">Best Price</button>
+      <button role="tab" data-view="draftkings" aria-selected="false">DraftKings</button>
+      <button role="tab" data-view="fanduel" aria-selected="false">FanDuel</button>
+    </nav>
+  </header>
+
+  <section class="status" id="status" aria-live="polite"></section>
+  <div class="banner" id="banner" hidden></div>
+
+  <main id="board" class="board">
+    <p class="empty">Connecting…</p>
+  </main>
+
+  <aside class="panel" id="moves-panel">
+    <h2>Latest line moves</h2>
+    <ol id="moves"></ol>
+  </aside>
+
+  <footer class="foot">
+    <span id="conn">connecting</span> · <a href="/api/metrics" target="_blank" rel="noopener">metrics</a> · Odds shown for comparison only.
+  </footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

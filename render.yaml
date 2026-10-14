@@ -1,0 +1,12 @@
+# Render Blueprint: free web service in Ohio (close to the books' US edges).
+# Free instances sleep after 15 idle minutes; .github/workflows/keepalive.yml pings /healthz.
+services:
+  - type: web
+    name: nfl-odds-board
+    runtime: docker
+    plan: free
+    region: ohio
+    healthCheckPath: /healthz
+    envVars:
+      - key: REGION
+        value: us

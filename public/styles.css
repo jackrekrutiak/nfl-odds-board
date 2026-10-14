@@ -1,0 +1,84 @@
+:root {
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #1c2430;
+  --line: #263041;
+  --text: #e6edf3;
+  --muted: #8b98a9;
+  --accent: #2fd17a;
+  --up: #2fd17a;
+  --down: #ff5c5c;
+  --warn: #f5b942;
+  --dk: #53d337;
+  --fd: #1493ff;
+  --radius: 10px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: #f4f6f9; --surface: #ffffff; --surface-2: #eef1f5; --line: #dde2ea; --text: #111823; --muted: #5b6676;
+    --accent: #0e9f55; --up: #0e9f55; --down: #d93636; --warn: #b77900; --dk: #2e9e1a; --fd: #0b6fd1;
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: 'top top' 'status status' 'banner banner' 'board panel' 'foot foot'; gap: 0 16px; padding: 0 16px 16px; max-width: 1280px; margin: 0 auto; }
+.top { grid-area: top; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0 12px; position: sticky; top: 0; background: var(--bg); z-index: 5; flex-wrap: wrap; }
+.brand { display: flex; gap: 10px; align-items: center; }
+.logo { color: var(--accent); font-size: 22px; }
+h1 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+.sub { margin: 0; color: var(--muted); font-size: 12px; }
+.toggle { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.toggle button { border: 0; background: transparent; color: var(--muted); padding: 7px 14px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; }
+.toggle button[aria-selected='true'] { background: var(--accent); color: #04140b; }
+.status { grid-area: status; display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 12px; }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.chip.live .dot { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 25%, transparent); }
+.chip.polling .dot { background: var(--warn); }
+.chip.stale .dot, .chip.degraded .dot { background: var(--down); }
+.chip b { font-weight: 700; }
+.chip .m { color: var(--muted); font-variant-numeric: tabular-nums; }
+.banner { grid-area: banner; background: color-mix(in srgb, var(--down) 15%, var(--surface)); border: 1px solid color-mix(in srgb, var(--down) 50%, var(--line)); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 10px; }
+.board { grid-area: board; min-width: 0; }
+.day { margin: 14px 0 6px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.colhead, .game { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 6px; }
+.colhead { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 8px 4px; }
+.colhead span:not(:first-child) { text-align: center; }
+.game { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; margin-bottom: 8px; grid-template-rows: auto auto; }
+.meta { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.livetag { color: #fff; background: var(--down); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; }
+.team { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; }
+.team .abbr { display: inline-grid; place-items: center; width: 34px; height: 24px; border-radius: 6px; background: var(--surface-2); font-size: 11px; color: var(--muted); flex: none; }
+.team .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team .score { margin-left: auto; font-variant-numeric: tabular-nums; }
+.cell { background: var(--surface-2); border-radius: 8px; padding: 6px 4px; text-align: center; min-height: 48px; display: flex; flex-direction: column; justify-content: center; position: relative; transition: background 0.6s; }
+.cell .px { font-variant-numeric: tabular-nums; font-weight: 700; }
+.cell .ln { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; margin-right: 4px; }
+.cell .bk { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 2px; }
+.cell .bk.draftkings { color: var(--dk); }
+.cell .bk.fanduel { color: var(--fd); }
+.cell .was { font-size: 10px; color: var(--muted); text-decoration: line-through; }
+.cell.up { background: color-mix(in srgb, var(--up) 28%, var(--surface-2)); }
+.cell.down { background: color-mix(in srgb, var(--down) 28%, var(--surface-2)); }
+.cell.susp, .cell.stale { opacity: 0.45; }
+.cell.empty { color: var(--muted); }
+.cell .flag { position: absolute; top: 3px; right: 5px; font-size: 9px; color: var(--warn); font-weight: 700; }
+.panel { grid-area: panel; position: sticky; top: 80px; align-self: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; max-height: calc(100vh - 100px); overflow: auto; margin-top: 14px; }
+.panel h2 { font-size: 13px; margin: 0 0 8px; }
+#moves { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 12px; }
+#moves li { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+#moves .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+#moves .up { color: var(--up); } #moves .down { color: var(--down); }
+.empty { color: var(--muted); padding: 24px 0; }
+.foot { grid-area: foot; color: var(--muted); font-size: 12px; padding-top: 16px; }
+.foot a { color: inherit; }
+@media (max-width: 900px) {
+  body { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'top' 'status' 'banner' 'board' 'panel' 'foot'; }
+  .panel { position: static; max-height: 320px; }
+  .colhead, .game { grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .team .name { display: none; }
+  .team .abbr { width: auto; padding: 0 6px; color: var(--text); background: transparent; font-size: 13px; }
+  .toggle button { padding: 6px 10px; }
+}

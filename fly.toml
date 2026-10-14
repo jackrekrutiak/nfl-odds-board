@@ -1,0 +1,26 @@
+# Fly.io alternative. `fly launch --copy-config --no-deploy && fly deploy`
+# iad (Virginia) sits next to the books' US edges. For the Ontario boards use yyz + REGION=ca.
+app = "nfl-odds-board"
+primary_region = "iad"
+
+[build]
+
+[env]
+  REGION = "us"
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off"   # one always-on ingestion; stopping it would drop the DK socket
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
