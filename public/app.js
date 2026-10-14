@@ -85,7 +85,9 @@ function connect() {
 
 function upsertGame(g) {
   const cur = state.games.get(g.gameKey) ?? { key: g.gameKey, books: new Set() };
-  cur.away = g.away; cur.home = g.home; cur.startTime = g.startTime;
+  cur.away = g.away; cur.home = g.home;
+  // Books disagree by a minute (FanDuel lists 1:01 for a 1:00 kickoff); show the earliest.
+  cur.startTime = cur.startTime ? Math.min(cur.startTime, g.startTime) : g.startTime;
   cur.books.add(g.book);
   // Live if any book says live; score from whichever book has one.
   cur.liveBy = { ...(cur.liveBy ?? {}), [g.book]: g.live };

@@ -2,7 +2,7 @@
 
 Pregame and in-game NFL moneyline, spread and total from **DraftKings** and **FanDuel**, normalized into one model and shown side by side. A toggle switches between **Best Price** (with the book underneath), **DraftKings** and **FanDuel**. Prices update on their own as lines move, and each book's freshness is on the page.
 
-- **Live:** `https://<your-app>.onrender.com` <!-- TODO: paste the deployed URL -->
+- **Live:** https://nfl-odds-board.onrender.com (Render free tier, Ohio; the first request after idle can take ~50 s to wake)
 - **Stack:** Node 22 + TypeScript, one runtime dependency (`ws`). No framework, no headless browser, no third-party odds API.
 
 ![Board](docs/desktop.png)
