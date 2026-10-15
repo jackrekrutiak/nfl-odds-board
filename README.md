@@ -2,8 +2,7 @@
 
 Pregame and in-game NFL moneyline, spread and total from **DraftKings** and **FanDuel**, normalized into one model and shown side by side. A toggle switches between **Best Price** (with the book underneath), **DraftKings** and **FanDuel**. Prices update on their own as lines move, and each book's freshness is on the page.
 
-- **Live:** https://nfl-odds-board.onrender.com (Render free tier, Ohio; the first request after idle can take ~50 s to wake). The live URL runs branch [`live-render`](https://github.com/jackrekrutiak/nfl-odds-board/tree/live-render) (`7f02bc9`): same data pipeline and latency work, previous UI. Render's deploy API returned "Service Unavailable" for the newer builds on Oct 14. `main` adds the reworked UI, the FanDuel-down fix and the self-ping; run it locally with `npm run dev` or `npm run demo`.
-- **Stack:** Node 22 + TypeScript, one runtime dependency (`ws`). No framework, no headless browser, no third-party odds API.
+- **Live:** https://nfl-odds-board.onrender.com (Render free tier, Ohio; the first request after idle can take ~50 s to wake).- **Stack:** Node 22 + TypeScript, one runtime dependency (`ws`). No framework, no headless browser, no third-party odds API.
 
 ![Board](docs/desktop.png)
 
