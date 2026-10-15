@@ -234,7 +234,15 @@ Free tiers are enough; it must be an **always-on process** (it holds the DK sock
 
 ## What I'd do next
 
-- Record live-game latency over a full Sunday slate and publish the distribution, not just p50/p95.
-- A feed audit (build a board from the DK socket alone for 20 min, compare to REST every 5 s) to prove zero missed deltas beyond the 60 s re-check counter.
-- msgpack on the DK socket (what DK's own site uses) as a fallback if `format=json` ever goes away.
-- "Who moved first" across the two books, and alt lines / props using the same adapters.
+With more time, in this order:
+
+1. **Measure live games across a full Sunday slate.** Run `npm run measure` from kickoff to the last game and publish the whole distribution per book (p50, p95, p99, max), comparing a quiet pregame hour with a busy fourth quarter. This fills the one row the latency table is missing and shows whether the DraftKings tail grows under load.
+2. **Who moved first.** When both books change the same market, record which moved and how many milliseconds earlier. Over a Sunday this shows which book leads on which markets, and it gives a real estimate of FanDuel's delay, which today is only a bound because FanDuel publishes no timestamps. The store already sees every change with a receive time, so this is a small table plus a panel on the page.
+3. **Line history and a no-vig fair line.** Keep every price change (ClickHouse or Timescale off the same stream) and show the opening line, current line and a small trend per market. From the two books' prices, remove the bookmaker margin to get a fair price, and flag any price better than fair. That turns a price comparison into the start of edge detection.
+
+After that:
+
+- **Coverage:** alt spreads and totals, player props, first-half lines, other leagues (same endpoints, new league id and team registry), and more books, each as one new adapter.
+- **Production setup:** one worker per book publishing to Redis Streams, Prometheus/Grafana alerts for stale books and latency jumps, and an always-on host near the books.
+- **Resilience to book changes:** nightly checks of live payload shapes against saved samples, and msgpack on the DraftKings socket (what its own site uses) as a fallback if `format=json` goes away.
+- **Product:** alerts ("tell me when this hits -3"), a mobile layout, and one-click links to the game on each book.
