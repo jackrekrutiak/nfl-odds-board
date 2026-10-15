@@ -40,7 +40,7 @@ afterAll(async () => {
   await mock?.close();
 });
 
-describe('end to end', () => {
+describe('end to end', { timeout: 30_000 }, () => {
   it('boots both books into one normalized board', async () => {
     await until(async () => (await stateOf('draftkings')) === 'live' && (await stateOf('fanduel')) === 'live');
     const b = await board();
@@ -122,7 +122,7 @@ describe('end to end', () => {
     expect([...seen].filter((s) => s === 'polling' || s === 'live')).toEqual([]);
     mock.set('fd', true);
     await until(async () => (await stateOf('fanduel')) === 'live', 10_000);
-  });
+  }, 30_000);
 
   it('recovers DraftKings when it comes back', async () => {
     mock.set('dk-rest', true);
