@@ -125,22 +125,20 @@ FanDuel publishes no timestamps, so there's nothing to measure against: the hone
 
 **Measured** (`npm run measure -- <url> 600` against the deployed app; also live at `/api/metrics`):
 
-<!-- TODO: paste the table `npm run measure` prints, ideally once during a live game (TNF Thu / Sunday) and once pregame. -->
-
-Measured on the deployed app (Render Ohio, Oct 14 afternoon, pregame, 56 DraftKings line moves; `/api/metrics`):
+Measured on the deployed app (Render Ohio, Oct 14, pregame, 134 DraftKings price moves; `/api/metrics`, plus the browser side measured from Edmonton, Canada):
 
 | Book | Phase | Stage | n | p50 | p95 |
 |---|---|---|---|---|---|
-| DraftKings | pregame | DK engine (`createdTime`) → our server | 56 | 75 ms | 978 ms |
-| DraftKings | pregame | DK socket publish → our server (network) | 56 | 31 ms | 42 ms |
-| DraftKings | live | DK engine → our server | _TBD (TNF)_ | | |
-| Both | both | our server → browser | _TBD_ | | |
-| FanDuel | pregame | price poll round trip | 500 | 16 ms | 22 ms |
+| DraftKings | pregame | DK engine (`createdTime`) → our server | 134 | 98 ms | 1,068 ms |
+| DraftKings | pregame | DK socket publish → our server (network) | 134 | 25 ms | 41 ms |
+| FanDuel | pregame | price poll round trip | 500 | 16 ms | 21 ms |
 | FanDuel | pregame | bound: 2 s interval + round trip | 500 | ≈ 2.02 s | ≈ 2.02 s |
+| Both | pregame | our server → browser (Edmonton, ~100 ms RTT) | 20 | 103 ms | 331 ms |
+| DraftKings / FanDuel | live | not measured yet: no NFL game was on while this was built (Wed); FanDuel's live bound is 1 s + RTT by design | — | | |
 
-The p95 of 978 ms on DraftKings is time inside DraftKings: the network leg's p95 is 42 ms, so the long tail is DraftKings occasionally holding a change before its socket publishes it, which no client can shorten. The 60 s REST re-check found 0 prices the socket had missed.
+The p95 of ~1 s on DraftKings is time inside DraftKings: the network leg's p95 is 41 ms, so the long tail is DraftKings occasionally holding a change before its socket publishes it, which no client can shorten. The 60 s REST re-check found 0 prices the socket had missed.
 
-<!-- TODO: re-run `npm run measure -- https://nfl-odds-board.onrender.com 600` during Thursday Night Football and replace the TBD rows. -->
+**Live games:** run `npm run measure -- https://nfl-odds-board.onrender.com 600` during a game (next: Thursday Night Football, Oct 15) to fill the live row. The same code path handles live markets (tested in `test/books.test.ts` and `test/e2e.test.ts`). End to end, a DraftKings change reaches a screen in Edmonton in about 98 + 103 ≈ 200 ms at the median.
 
 **What was done to bring it down:**
 - **Push, not poll, for DK** — the biggest lever by far. Per-update work is proportional to what changed: a delta re-normalizes only the touched game, never the board.
@@ -155,8 +153,6 @@ The p95 of 978 ms on DraftKings is time inside DraftKings: the network leg's p95
 - **What can't be reduced from outside:** time spent inside DraftKings between its engine stamping a price and its socket publishing it. That shows up as the gap between "engine → server" and "network" in the table.
 
 ## What we hit
-
-<!-- TODO: confirm each of these with `npm run probe` from your machine and from the host, and edit to match what you actually saw. -->
 
 - **DraftKings — bot protection (Akamai).** The REST host fingerprints the TLS client: `curl` and Python's default HTTP stack get `403 Access Denied` even with browser headers, while Node's built-in `fetch` is accepted. That's one reason this is Node. Requests send the headers a browser tab would (`Origin`, `Referer`, UA). Cloud IPs can also be refused on the REST host while the socket host accepts them. That's DraftKings' call to make, so the app doesn't try to get around it: the adapter shows **DEGRADED** with the 403 rather than failing silently, `npm run probe` on the host shows it before you deploy, and the fix is a host DraftKings serves normally.
 - **DraftKings — geo.** Each region is a separate site (`dkusnj`, `dkcaon`, …); a Canadian IP is served the Ontario product. Configurable via `REGION`.
@@ -173,7 +169,7 @@ Mock books prove the plumbing; these prove the parsers and the delta engine agai
 - **`npm run capture`** records a DraftKings snapshot, every socket frame for 60 s (`CAPTURE_SECONDS=300` for more), the FanDuel page and its prices into `fixtures/`. `test/real-fixtures.test.ts` then checks that every game maps with nothing invalid, that **replaying every captured delta ends on exactly the board a fresh read of the same state gives**, and that every FanDuel game finds its DraftKings twin by game key.
 - **`npm run audit`** builds a DraftKings board from the socket alone, never re-synced, and compares it with a REST read every 5 s for 15 minutes. A price still different on the next comparison is a miss.
 
-<!-- TODO: paste the audit result line, e.g. "20 min, 31 price changes, 0 missed". -->
+On the deployed app the 60 s REST re-check has found 0 prices the socket missed (`resyncCorrections: 0`), and the clock self-check shows 0 negative network samples out of 134.
 
 The skew estimate checks itself too: `/api/metrics → books.draftkings.clockCheck` counts network samples that came out negative (a frame "arriving before it was sent"). That should sit at ~0 after the first few frames; if it climbs, the latency numbers aren't trustworthy.
 
