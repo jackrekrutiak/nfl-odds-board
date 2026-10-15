@@ -187,13 +187,21 @@ function renderBoard() {
     el.innerHTML = `<p class="empty">${state.lastFrameAt ? 'No NFL game lines from either book right now.' : 'Connecting…'}</p>`;
     return;
   }
+  // In-progress games are pinned in their own band at the top; everything else is grouped by day.
+  const live = games.filter((g) => g.live);
+  const upcoming = games.filter((g) => !g.live);
+  const bar = (label, cls = '') => `<div class="daybar${cls}"><span class="day">${label}</span><span>Spread</span><span>Total</span><span>Moneyline</span></div>`;
   let html = '';
+  if (live.length) {
+    html += bar(`<span class="live-dot" aria-hidden="true"></span>Live now <span class="count">${live.length}</span>`, ' livebar');
+    for (const g of live) html += gameHtml(g);
+  }
   let day = '';
-  for (const g of games) {
+  for (const g of upcoming) {
     const d = new Date(g.startTime).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
     if (d !== day) {
       day = d;
-      html += `<div class="daybar"><span class="day">${d}</span><span>Spread</span><span>Total</span><span>Moneyline</span></div>`;
+      html += bar(d);
     }
     html += gameHtml(g);
   }
@@ -211,7 +219,7 @@ function gameHtml(g) {
     : `<span>${new Date(g.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>`;
   const only = g.books.size === 1 ? `<span class="only">${BOOK_SHORT[[...g.books][0]]} only</span>` : '';
   const team = (t, score) => `<div class="team"><span class="abbr">${t.id}</span><span class="name">${esc(t.name)}</span>${score !== undefined ? `<span class="score">${score}</span>` : ''}</div>`;
-  return `<article class="game">
+  return `<article class="game${g.live ? ' is-live' : ''}">
     <div class="when">${when}${only}</div>
     ${team(g.away, g.live ? g.score?.away : undefined)}
     ${cellHtml(g.key, 'spread', 'away')}${cellHtml(g.key, 'total', 'over')}${cellHtml(g.key, 'moneyline', 'away')}

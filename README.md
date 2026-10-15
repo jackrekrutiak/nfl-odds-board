@@ -1,6 +1,6 @@
 # NFL Odds Board — DraftKings vs FanDuel, live
 
-Pregame and in-game NFL moneyline, spread and total from **DraftKings** and **FanDuel**, normalized into one model and shown side by side. A toggle switches between **Best Price** (with the book underneath), **DraftKings** and **FanDuel**. Prices update on their own as lines move, and each book's freshness is on the page.
+Pregame and in-game NFL moneyline, spread and total from **DraftKings** and **FanDuel**, normalized into one model and shown side by side. A toggle switches between **Best Price** (with the book underneath), **DraftKings** and **FanDuel**. Prices update on their own as lines move, games in progress are pinned in a **Live now** band at the top, and each book's freshness is on the page.
 
 - **Live:** https://nfl-odds-board.onrender.com (Render free tier, Ohio; the first request after idle can take ~50 s to wake).- **Stack:** Node 22 + TypeScript, one runtime dependency (`ws`). No framework, no headless browser, no third-party odds API.
 
