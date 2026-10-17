@@ -12,7 +12,8 @@
     "measure": "tsx scripts/measure.ts",
     "test": "vitest run",
     "capture": "tsx scripts/capture.ts",
-    "audit": "tsx scripts/audit.ts"
+    "audit": "tsx scripts/audit.ts",
+    "watch-day": "tsx scripts/watch-day.ts"
   },
   "license": "MIT",
   "dependencies": {
