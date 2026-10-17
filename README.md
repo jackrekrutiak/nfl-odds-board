@@ -134,11 +134,13 @@ Measured on the deployed app (Render Ohio, Oct 14, pregame, 134 DraftKings price
 | FanDuel | pregame | price poll round trip | 500 | 16 ms | 21 ms |
 | FanDuel | pregame | bound: 2 s interval + round trip | 500 | ≈ 2.02 s | ≈ 2.02 s |
 | Both | pregame | our server → browser (Edmonton, ~100 ms RTT) | 20 | 103 ms | 331 ms |
-| DraftKings / FanDuel | live | not measured yet: no NFL game was on while this was built (Wed); FanDuel's live bound is 1 s + RTT by design | — | | |
+| DraftKings | live | DK engine → our server (last 500 in-game moves, Thursday Night Football, Oct 15) | 500 | 105 ms | 293 ms |
+| DraftKings | live | DK socket publish → our server (network) | 500 | 34 ms | 100 ms |
+| FanDuel | live | bound: 1 s interval + round trip (by design) | — | ≈ 1.02 s | ≈ 1.02 s |
 
 The p95 of ~1 s on DraftKings is time inside DraftKings: the network leg's p95 is 41 ms, so the long tail is DraftKings occasionally holding a change before its socket publishes it, which no client can shorten. The 60 s REST re-check found 0 prices the socket had missed.
 
-**Live games:** run `npm run measure -- https://nfl-odds-board.onrender.com 600` during a game (next: Thursday Night Football, Oct 15) to fill the live row. The same code path handles live markets (tested in `test/books.test.ts` and `test/e2e.test.ts`). End to end, a DraftKings change reaches a screen in Edmonton in about 98 + 103 ≈ 200 ms at the median.
+**Live games:** the in-game rows come from the server's own metrics after Thursday Night Football (read from `/api/metrics` on Oct 16). In-game, DraftKings' slow tail is much shorter than pregame (p95 293 ms vs ~1 s), which suggests DraftKings holds or batches some pregame changes but publishes in-game moves quickly. A full Sunday is recorded hour by hour by `.github/workflows/sunday-latency.yml` (`npm run watch-day`), with p99 and max, into `latency/`. End to end, a DraftKings change reaches a screen in Edmonton in about 98 + 103 ≈ 200 ms at the median.
 
 **What was done to bring it down:**
 - **Push, not poll, for DK** — the biggest lever by far. Per-update work is proportional to what changed: a delta re-normalizes only the touched game, never the board.
