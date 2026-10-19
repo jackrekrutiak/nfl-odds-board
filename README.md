@@ -134,13 +134,29 @@ Measured on the deployed app (Render Ohio, Oct 14, pregame, 134 DraftKings price
 | FanDuel | pregame | price poll round trip | 500 | 16 ms | 21 ms |
 | FanDuel | pregame | bound: 2 s interval + round trip | 500 | ≈ 2.02 s | ≈ 2.02 s |
 | Both | pregame | our server → browser (Edmonton, ~100 ms RTT) | 20 | 103 ms | 331 ms |
-| DraftKings | live | DK engine → our server (last 500 in-game moves, Thursday Night Football, Oct 15) | 500 | 105 ms | 293 ms |
+| DraftKings | live | DK engine → our server (last 500 in-game moves at the end of Thursday Night Football, Oct 15; see the Sunday table for whole games) | 500 | 105 ms | 293 ms |
 | DraftKings | live | DK socket publish → our server (network) | 500 | 34 ms | 100 ms |
 | FanDuel | live | bound: 1 s interval + round trip (by design) | — | ≈ 1.02 s | ≈ 1.02 s |
 
 The p95 of ~1 s on DraftKings is time inside DraftKings: the network leg's p95 is 41 ms, so the long tail is DraftKings occasionally holding a change before its socket publishes it, which no client can shorten. The 60 s REST re-check found 0 prices the socket had missed.
 
-**Live games:** the in-game rows come from the server's own metrics after Thursday Night Football (read from `/api/metrics` on Oct 16). In-game, DraftKings' slow tail is much shorter than pregame (p95 293 ms vs ~1 s), which suggests DraftKings holds or batches some pregame changes but publishes in-game moves quickly. A full Sunday is recorded hour by hour by `.github/workflows/sunday-latency.yml` (`npm run watch-day`), with p99 and max, into `latency/`. End to end, a DraftKings change reaches a screen in Edmonton in about 98 + 103 ≈ 200 ms at the median.
+**Live games: a full Sunday (Oct 18).** `.github/workflows/sunday-latency.yml` watched the deployed app from a GitHub Actions runner in three runs covering 9:36 am to 12:59 am ET (the Sunday Night run started 44 min late, so it missed the first ~40 min of that game). Every real price move was counted, about 43,000 DraftKings and 35,000 FanDuel. Full hourly tables: [`latency/`](latency/).
+
+| Window (ET) | DraftKings phase | Moves | DK engine → our server p50 / p95 / p99 / max | Our server → watcher p50 / p95 |
+|---|---|---|---|---|
+| Early: London game + 1 pm slate (9:36 am–3:21 pm) | live | 19,365 | 356 / 938 / 1,434 / 4,205 ms | 26 / 29 ms |
+| Late: 4 pm slate (3:07–8:52 pm) | live | 19,674 | 223 / 883 / 1,646 / 11,111 ms | 26 / 30 ms |
+| Sunday Night Football (8:59 pm–12:59 am) | live | 2,223 | 731 / 4,231 / 8,451 / 12,814 ms | 18 / 23 ms |
+| All three windows | pregame | 1,789 | 60–457 / 178–1,526 ms by window | 18–26 / 21–51 ms |
+
+What it shows:
+
+- **The network and our server are not where the time goes.** DraftKings' socket publish → our server stayed at 17–28 ms p50 every hour (p95 22–94 ms), and our server → watcher at 18–26 ms p50. Everything above that is between DraftKings' engine stamping a price and its socket publishing it.
+- **The tail did not grow with load.** The busiest hour, 4–5 pm ET with 9 live games, had a p50 of 178 ms. The worst hour was the single Sunday Night game's 9–10 pm (p50 1,458 ms, p99 10.8 s). The quiet 12–1 pm hour (1 live game) was 198 ms.
+- **It is worst early in games and best late.** Sunday Night went 1,506 → 1,458 → 751 → 256 ms p50 hour by hour, and its last 500 moves were 79 / 210 ms. That matches Thursday's 105 / 293 ms, which was also an end-of-game sample. So Thursday's number is real, but it describes the end of a game, not a whole game.
+- **What it means for users:** a typical in-game DraftKings price is about a quarter to three quarters of a second old when it reaches us, and occasionally several seconds. That delay is inside DraftKings, so no client can remove it, but the board can show it honestly per price.
+
+End to end, a DraftKings change reaches a viewer at roughly DraftKings' own delay + ~25 ms (US) or ~100 ms (Edmonton).
 
 **What was done to bring it down:**
 - **Push, not poll, for DK** — the biggest lever by far. Per-update work is proportional to what changed: a delta re-normalizes only the touched game, never the board.
@@ -238,7 +254,7 @@ Free tiers are enough; it must be an **always-on process** (it holds the DK sock
 
 With more time, in this order:
 
-1. **Measure live games across a full Sunday slate.** Run `npm run measure` from kickoff to the last game and publish the whole distribution per book (p50, p95, p99, max), comparing a quiet pregame hour with a busy fourth quarter. This fills the one row the latency table is missing and shows whether the DraftKings tail grows under load.
+1. **Full Sunday slate: done (Oct 18).** It's measured above, and the delay sits inside DraftKings, worst early in games and in the standalone prime-time game, not under load. Next: find out why DraftKings holds early-game prices by splitting the delay by market type (moneyline, spread, total, quarter markets) to see which markets DraftKings holds, and showing each price's age on the board so users can see it.
 2. **Who moved first.** When both books change the same market, record which moved and how many milliseconds earlier. Over a Sunday this shows which book leads on which markets, and it gives a real estimate of FanDuel's delay, which today is only a bound because FanDuel publishes no timestamps. The store already sees every change with a receive time, so this is a small table plus a panel on the page.
 3. **Line history and a no-vig fair line.** Keep every price change (ClickHouse or Timescale off the same stream) and show the opening line, current line and a small trend per market. From the two books' prices, remove the bookmaker margin to get a fair price, and flag any price better than fair. That turns a price comparison into the start of edge detection.
 
