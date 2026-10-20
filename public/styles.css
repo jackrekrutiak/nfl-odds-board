@@ -149,8 +149,13 @@ body { max-width: 1320px; margin: 0 auto; padding: 0 16px 20px; }
   .cell .was { display: none; }
   .team .abbr { min-width: 40px; }
   .cell { padding: 0 5px; grid-template-columns: 1fr; }
-  .cell .side { position: absolute; top: 3px; right: 4px; flex-direction: row; }
-  .cell .badge { display: none; }
+  /* Book badge stays visible on phones, shrunk: star top-right, mini DK/FD bottom-right. */
+  .cell .side { position: absolute; top: 3px; right: 3px; bottom: 3px; flex-direction: column; justify-content: flex-start; align-items: flex-end; gap: 0; }
+  .cell .star { font-size: 9px; }
+  .cell .badge { display: inline-grid; margin-top: auto; min-width: 15px; height: 11px; padding: 0 2px; border-radius: 3px; font-size: 7.5px; letter-spacing: 0; }
+  .cell .ln { padding-right: 9px; }
+  .cell .px { padding-right: 17px; }
+  .cell .arrow { display: none; } /* the cell's green/red flash still shows the move */
   .cell.best .side::before { content: ''; }
   .toggle button { padding: 6px 9px; }
   .toggle .badge { display: none; }
@@ -201,8 +206,16 @@ body { max-width: 1320px; margin: 0 auto; padding: 0 16px 20px; }
 .lines-head span { text-align: center; }
 .daybar { grid-template-columns: 1fr; }
 @media (max-width: 640px) {
-  .lines-head { grid-template-columns: 52px minmax(54px, 0.8fr) repeat(3, minmax(0, 1fr)); column-gap: 4px; padding-left: 6px; padding-right: 6px; }
+  .lines-head { grid-template-columns: 52px minmax(54px, 0.8fr) repeat(3, minmax(0, 1fr)); column-gap: 4px; padding-left: 6px; padding-right: 6px; font-size: 9px; letter-spacing: .03em; }
   .box { margin: 6px; }
   .prop-row.ou { grid-template-columns: minmax(0, 1fr) 92px 92px; }
   .prop-stat:has(.prop-row.ou) .prop-list, .prop-list { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 359px) {
+  .daybar, .game, .lines-head { grid-template-columns: 40px minmax(44px, 0.7fr) repeat(3, minmax(0, 1fr)); column-gap: 3px; }
+  .team .abbr { min-width: 34px; }
+  .cell { padding: 0 3px; }
+  .cell .px { font-size: 12px; padding-right: 15px; }
+  .cell .ln { font-size: 10px; padding-right: 8px; }
+  .prop-row.ou { grid-template-columns: minmax(0, 1fr) 84px 84px; }
 }
