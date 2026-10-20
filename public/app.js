@@ -197,7 +197,7 @@ function renderBoard() {
   // In-progress games are pinned in their own band at the top; everything else is grouped by day.
   const live = games.filter((g) => g.live);
   const upcoming = games.filter((g) => !g.live);
-  const bar = (label, cls = '') => `<div class="daybar${cls}"><span class="day">${label}</span><span>Spread</span><span>Total</span><span>Moneyline</span></div>`;
+  const bar = (label, cls = '') => `<div class="daybar${cls}"><span class="day">${label}</span></div>`;
   let html = '';
   if (live.length) {
     html += bar(`<span class="live-dot" aria-hidden="true"></span>Live now <span class="count">${live.length}</span>`, ' livebar');
@@ -226,51 +226,67 @@ function gameHtml(g) {
     : `<span>${new Date(g.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>`;
   const only = g.books.size === 1 ? `<span class="only">${BOOK_SHORT[[...g.books][0]]} only</span>` : '';
   const team = (t, score) => `<div class="team"><span class="abbr">${t.id}</span><span class="name">${esc(t.name)}</span>${score !== undefined ? `<span class="score">${score}</span>` : ''}</div>`;
-  return `<article class="game${g.live ? ' is-live' : ''}">
+  const head = `<header class="gcard-head"><span class="matchup">${esc(g.away.name)} <span class="at">@</span> ${esc(g.home.name)}</span>${g.live && g.score ? `<span class="hscore">${g.score.away}–${g.score.home}</span>` : ''}<span class="htime">${g.live ? '<span class="livetag">LIVE</span>' : new Date(g.startTime).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span></header>`;
+  const lines = `<div class="lines-head"><span></span><span></span><span>Spread</span><span>Total</span><span>Moneyline</span></div>
+    <article class="game${g.live ? ' is-live' : ''}">
     <div class="when">${when}${only}</div>
     ${team(g.away, g.live ? g.score?.away : undefined)}
     ${cellHtml(g.key, 'spread', 'away')}${cellHtml(g.key, 'total', 'over')}${cellHtml(g.key, 'moneyline', 'away')}
     ${team(g.home, g.live ? g.score?.home : undefined)}
     ${cellHtml(g.key, 'spread', 'home')}${cellHtml(g.key, 'total', 'under')}${cellHtml(g.key, 'moneyline', 'home')}
-  </article>${propsHtml(g)}`;
+  </article>`;
+  return `<section class="gcard${g.live ? ' is-live' : ''}">${head}${box(g.key, 'lines', 'Game lines', 'Spread · Total · Moneyline', lines, true)}${propsHtml(g)}</section>`;
 }
 
-/* Player props: one row per player, best price across books, same cells as the game lines. */
-const openProps = new Set();
+/* Boxed, collapsible sections per game. Game lines start open; prop categories start closed.
+   Each box remembers what the viewer chose while prices keep re-rendering the board. */
+const boxOpen = new Map();
 document.addEventListener('toggle', (e) => {
-  const gk = e.target?.dataset?.props;
-  if (gk) e.target.open ? openProps.add(gk) : openProps.delete(gk);
+  const k = e.target?.dataset?.box;
+  if (k) boxOpen.set(k, e.target.open);
 }, true);
+function box(gk, id, title, sub, body, openByDefault = false) {
+  const k = `${gk}|${id}`;
+  const open = boxOpen.has(k) ? boxOpen.get(k) : openByDefault;
+  return `<details class="box box-${id}" data-box="${esc(k)}"${open ? ' open' : ''}><summary class="box-head"><span class="chev" aria-hidden="true">›</span><span class="btitle">${title}</span><span class="bsub">${sub}</span></summary><div class="box-body">${body}</div></details>`;
+}
+
 const STAT_LABEL = { td_anytime: 'Anytime TD', passing_yds: 'Passing yds', passing_tds: 'Passing TDs', pass_completions: 'Completions', pass_attempts: 'Pass attempts', interceptions: 'Interceptions', rushing_yds: 'Rushing yds', rush_attempts: 'Rush attempts', receiving_yds: 'Receiving yds', receptions: 'Receptions', rush_rec_yds: 'Rush + rec yds' };
 const statOf = (market) => (market.startsWith('prop:') ? market.slice(5) : market);
+const CATEGORIES = [
+  { id: 'td', title: 'Touchdowns', stats: ['td_anytime'] },
+  { id: 'passing', title: 'Passing', stats: ['passing_yds', 'passing_tds', 'pass_completions', 'pass_attempts', 'interceptions'] },
+  { id: 'rushing', title: 'Rushing', stats: ['rushing_yds', 'rush_attempts', 'rush_rec_yds'] },
+  { id: 'receiving', title: 'Receiving', stats: ['receiving_yds', 'receptions'] },
+];
 function propsHtml(g) {
-  // market → player → { name, over/under or yes side }
+  // stat → player → { name, line }
   const byStat = new Map();
   for (const [k, q] of state.quotes) {
     if (!k.startsWith(g.key + '|')) continue;
     if (q.market !== 'td_anytime' && !q.market.startsWith('prop:')) continue;
     const pk = q.side.split(':')[1];
-    const players = byStat.get(q.market) ?? new Map();
-    const p = players.get(pk) ?? { name: q.player ?? pk, line: null, sides: new Set() };
-    p.sides.add(q.side);
+    const players = byStat.get(statOf(q.market)) ?? new Map();
+    const p = players.get(pk) ?? { name: q.player ?? pk, line: null, market: q.market };
     if (q.line !== null && q.line !== undefined) p.line = q.line;
     players.set(pk, p);
-    byStat.set(q.market, players);
+    byStat.set(statOf(q.market), players);
   }
-  if (!byStat.size) return '';
-  let count = 0;
-  const order = Object.keys(STAT_LABEL);
-  const sections = [...byStat.entries()].sort((a, b) => order.indexOf(statOf(a[0])) - order.indexOf(statOf(b[0]))).map(([market, players]) => {
-    count += players.size;
-    const rows = [...players.entries()].sort((a, b) => (b[1].line ?? 0) - (a[1].line ?? 0) || a[1].name.localeCompare(b[1].name)).map(([pk, p]) => {
-      const cells = market === 'td_anytime'
-        ? cellHtml(g.key, market, `p:${pk}`)
-        : cellHtml(g.key, market, `p:${pk}:over`) + cellHtml(g.key, market, `p:${pk}:under`);
-      return `<div class="prop-row${market === 'td_anytime' ? '' : ' ou'}"><span class="pname">${esc(p.name)}</span>${cells}</div>`;
+  return CATEGORIES.map((cat) => {
+    let count = 0;
+    const sections = cat.stats.filter((st) => byStat.has(st)).map((st) => {
+      const players = byStat.get(st);
+      count += players.size;
+      const market = st === 'td_anytime' ? st : `prop:${st}`;
+      const rows = [...players.entries()].sort((a, b) => (b[1].line ?? 0) - (a[1].line ?? 0) || a[1].name.localeCompare(b[1].name)).map(([pk, p]) => {
+        const cells = market === 'td_anytime' ? cellHtml(g.key, market, `p:${pk}`) : cellHtml(g.key, market, `p:${pk}:over`) + cellHtml(g.key, market, `p:${pk}:under`);
+        return `<div class="prop-row${market === 'td_anytime' ? '' : ' ou'}"><span class="pname">${esc(p.name)}</span>${cells}</div>`;
+      }).join('');
+      return `<section class="prop-stat"><h4>${esc(STAT_LABEL[st] ?? st)}</h4><div class="prop-list">${rows}</div></section>`;
     }).join('');
-    return `<section class="prop-stat"><h4>${esc(STAT_LABEL[statOf(market)] ?? statOf(market))}${market === 'td_anytime' ? '' : '<span class="ou-head"><span>Over</span><span>Under</span></span>'}</h4><div class="prop-list">${rows}</div></section>`;
+    if (!count) return '';
+    return box(g.key, cat.id, cat.title, `${count} ${count === 1 ? 'prop' : 'props'}`, sections);
   }).join('');
-  return `<details class="props" data-props="${esc(g.key)}"${openProps.has(g.key) ? ' open' : ''}><summary>Player props <span class="count">${count} props</span></summary>${sections}</details>`;
 }
 
 function cellHtml(gk, market, side) {
