@@ -3,6 +3,7 @@ import type { ChangeSet, OddsStore } from '../core/store.js';
 import { pickBest } from '../core/best.js';
 import type { BookHealth, MarketType, Quote, SideKey } from '../core/types.js';
 import { BOOKS, quoteKey } from '../core/types.js';
+import { loadMoves, saveMove, type Move } from './moves-db.js';
 
 /**
  * Fan-out to browsers over Server-Sent Events.
@@ -29,7 +30,7 @@ export class SseHub {
   private heartbeat: NodeJS.Timeout;
   private lastUnhealthy = '';
   /** Recent real price moves, newest first, so a refreshed page keeps its line-movement feed. */
-  private moves: Array<{ at: number; q: Quote; prev: NonNullable<ChangeSet['changes'][number]['prev']> }> = [];
+  private moves: Move[] = [];
   sentFrames = 0;
   sentBytes = 0;
 
@@ -43,12 +44,18 @@ export class SseHub {
     store.on('change', (set) => {
       for (const c of set.changes) {
         if (c.quote && c.prev && (c.prev.american !== c.quote.american || c.prev.line !== c.quote.line)) {
-          this.moves.unshift({ at: Date.now(), q: c.quote, prev: c.prev });
+          const m: Move = { at: Date.now(), q: c.quote, prev: c.prev };
+          this.moves.unshift(m);
+          saveMove(m);
         }
       }
       if (this.moves.length > MOVES_KEPT) this.moves.length = MOVES_KEPT;
       this.broadcast('delta', { ...toWire(set), best: this.bestFor(set) });
     });
+    // On startup, bring back the moves saved before the last restart or deploy.
+    loadMoves(MOVES_KEPT)
+      .then((saved) => { this.moves = [...this.moves, ...saved].slice(0, MOVES_KEPT); })
+      .catch((e) => console.error('loading saved moves failed', String(e)));
     this.heartbeat = setInterval(() => {
       const health = this.health();
       // A stale or broken book must not keep "winning" best price: when the set of healthy
