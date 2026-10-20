@@ -19,6 +19,8 @@ interface Client {
   id: number;
 }
 
+const MOVES_KEPT = 40;
+
 export class SseHub {
   private clients = new Set<Client>();
   private seq = 0;
@@ -26,6 +28,8 @@ export class SseHub {
   private nextClientId = 1;
   private heartbeat: NodeJS.Timeout;
   private lastUnhealthy = '';
+  /** Recent real price moves, newest first, so a refreshed page keeps its line-movement feed. */
+  private moves: Array<{ at: number; q: Quote; prev: NonNullable<ChangeSet['changes'][number]['prev']> }> = [];
   sentFrames = 0;
   sentBytes = 0;
 
@@ -36,7 +40,15 @@ export class SseHub {
     heartbeatMs: number,
     private readonly ringSize = 1_000,
   ) {
-    store.on('change', (set) => this.broadcast('delta', { ...toWire(set), best: this.bestFor(set) }));
+    store.on('change', (set) => {
+      for (const c of set.changes) {
+        if (c.quote && c.prev && (c.prev.american !== c.quote.american || c.prev.line !== c.quote.line)) {
+          this.moves.unshift({ at: Date.now(), q: c.quote, prev: c.prev });
+        }
+      }
+      if (this.moves.length > MOVES_KEPT) this.moves.length = MOVES_KEPT;
+      this.broadcast('delta', { ...toWire(set), best: this.bestFor(set) });
+    });
     this.heartbeat = setInterval(() => {
       const health = this.health();
       // A stale or broken book must not keep "winning" best price: when the set of healthy
@@ -77,7 +89,7 @@ export class SseHub {
   }
 
   snapshotPayload(): unknown {
-    return { serverTs: Date.now(), games: this.store.allGames(), quotes: this.store.allQuotes(), best: this.bestForSlots(this.allSlots()), health: this.health() };
+    return { serverTs: Date.now(), games: this.store.allGames(), quotes: this.store.allQuotes(), best: this.bestForSlots(this.allSlots()), health: this.health(), moves: this.moves };
   }
 
   private allSlots(): Set<string> {

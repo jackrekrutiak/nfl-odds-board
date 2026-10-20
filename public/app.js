@@ -50,6 +50,13 @@ function connect() {
     for (const q of d.quotes) state.quotes.set(qkey(q), q);
     for (const [k, v] of Object.entries(d.best)) state.best.set(k, v);
     state.health = d.health;
+    // Line-movement feed survives a refresh: the server sends its recent moves with the snapshot.
+    if (Array.isArray(d.moves)) {
+      state.moves = d.moves.map((m) => ({
+        at: m.at - state.offset, q: m.q, prev: m.prev,
+        dir: m.q.line !== m.prev.line ? lineDir(m.q, m.prev) : m.q.american > m.prev.american ? 1 : -1,
+      }));
+    }
     state.lastFrameAt = Date.now();
     schedule();
   });
