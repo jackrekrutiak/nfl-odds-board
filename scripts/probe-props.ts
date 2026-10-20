@@ -30,15 +30,21 @@ function named(x: unknown, path = '', acc: Array<{ path: string; id: string; nam
 }
 
 console.log(`site ${config.dk.site}`);
-// DraftKings' own ids (from its league response): category 1003 "TD Scorers", subcategory 12438 "TD Scorer".
-const url = `${base}/categories/1003/subcategories/12438`;
-const r = await get(url);
-const j = r.status === 200 ? JSON.parse(r.text) : {};
-const n = (k: string) => (Array.isArray(j[k]) ? j[k].length : 0);
-console.log(`HTTP ${r.status}: ${n('events')} events, ${n('markets')} markets, ${n('selections')} selections`);
-if (!n('selections')) { console.log(r.text.slice(0, 400)); process.exit(1); }
-writeFileSync(out('dk-td-scorers.json'), r.text);
-// A small sample with every field, enough to write the parser from.
-const sample = { event: j.events[0], markets: j.markets.slice(0, 2), selections: j.selections.slice(0, 3) };
+// Over/under player props: list each section's subcategories and print one sample market from each.
+const league = JSON.parse((await get(base)).text);
+writeFileSync(out('dk-league.json'), JSON.stringify(league));
+const CATS: Record<string, string> = { '1000': 'Passing', '1001': 'Rushing', '1342': 'Receiving', '1003': 'TD Scorers' };
+const subs = (league.subcategories ?? []).filter((x: { categoryId: number }) => CATS[String(x.categoryId)]);
+const report: unknown[] = [];
+for (const sub of subs.slice(0, 16)) {
+  const r = await get(`${base}/categories/${sub.categoryId}/subcategories/${sub.id}`);
+  const j = r.status === 200 ? JSON.parse(r.text) : {};
+  const markets: Array<Record<string, unknown>> = j.markets ?? [];
+  const m = markets[0];
+  const sels = m ? (j.selections ?? []).filter((x: { marketId: string }) => x.marketId === m.id).slice(0, 2) : [];
+  const types = [...new Set(markets.map((x) => JSON.stringify(x.marketType)))].slice(0, 6);
+  console.log(`  ${CATS[String(sub.categoryId)]} / ${sub.name} (${sub.id}): HTTP ${r.status}, ${markets.length} markets`);
+  report.push({ cat: sub.categoryId, sub: sub.id, subName: sub.name, markets: markets.length, types, sampleMarket: m && { id: m.id, eventId: m.eventId, name: m.name, marketType: m.marketType }, sampleSelections: sels.map((x: Record<string, unknown>) => ({ label: x.label, outcomeType: x.outcomeType, points: x.points, displayOdds: x.displayOdds, trueOdds: x.trueOdds, participants: x.participants })) });
+}
 console.log('\n----- copy everything below this line -----');
-console.log(JSON.stringify(sample));
+console.log(JSON.stringify(report));
