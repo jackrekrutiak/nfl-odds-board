@@ -301,12 +301,53 @@ function sideOf(game: BookGame, market: MarketType, s: Raw): SideKey | null {
 export const DK_TD_PATH = '/categories/1003/subcategories/12438';
 const DK_PROP_TYPES: Record<string, MarketType> = { '11019': 'td_anytime' };
 
+/** Over/under props, from a real response (Oct 20): market "A.J. Brown Receiving Yards O/U",
+ *  marketType.name "Receiving Yards O/U", selections outcomeType Over/Under with the line in `points`.
+ *  Mapped by name so a section DraftKings adds or renumbers still lands; unknown stats are skipped.
+ *  "Milestones" (25+, 40+) are ladders and "- 1st Quarter" are period props: both left out, like FanDuel's ALT. */
+const DK_STATS: Record<string, string> = {
+  'passing yards': 'passing_yds',
+  'passing touchdowns': 'passing_tds',
+  'passing tds': 'passing_tds',
+  'passing completions': 'pass_completions',
+  'pass completions': 'pass_completions',
+  'passing attempts': 'pass_attempts',
+  'pass attempts': 'pass_attempts',
+  interceptions: 'interceptions',
+  'interceptions thrown': 'interceptions',
+  'rushing yards': 'rushing_yds',
+  'rushing attempts': 'rush_attempts',
+  'receiving yards': 'receiving_yds',
+  receptions: 'receptions',
+  'rushing + receiving yards': 'rush_rec_yds',
+  'rushing and receiving yards': 'rush_rec_yds',
+};
+export function dkPropType(marketTypeName: string): MarketType | null {
+  const m = /^(.+?)\s+o\/u$/i.exec(marketTypeName.trim());
+  const stat = m ? DK_STATS[m[1]!.toLowerCase()] : undefined;
+  return stat ? `prop:${stat}` : null;
+}
+
+/** DraftKings' own section list (in the league response) → the sections to read for props. */
+export function dkPropPaths(league: unknown): string[] {
+  const subs = isObj(league) && Array.isArray(league.subcategories) ? league.subcategories : [];
+  const paths = new Set<string>([DK_TD_PATH]);
+  for (const s of subs) {
+    if (!isObj(s)) continue;
+    const name = str(s.name) ?? '';
+    if (!['1000', '1001', '1342'].includes(str(s.categoryId) ?? '')) continue; // Passing, Rushing, Receiving
+    if (!/o\/u/i.test(name) || /1q|quarter|half/i.test(name)) continue;
+    paths.add(`/categories/${str(s.categoryId)}/subcategories/${str(s.id)}`);
+  }
+  return [...paths];
+}
+
 export function parseDkProps(body: unknown, gameKeyOf: (eventId: string) => string | undefined, ts: { sourceTs: number; receivedTs: number }): Quote[] {
   const b = isObj(body) ? body : {};
   const marketInfo = new Map<string, { gameKey: string; type: MarketType; suspended: boolean }>();
   for (const m of Array.isArray(b.markets) ? b.markets : []) {
     if (!isObj(m)) continue;
-    const type = DK_PROP_TYPES[(isObj(m.marketType) ? str(m.marketType.id) : undefined) ?? ''];
+    const type = DK_PROP_TYPES[(isObj(m.marketType) ? str(m.marketType.id) : undefined) ?? ''] ?? dkPropType(isObj(m.marketType) ? (str(m.marketType.name) ?? '') : '');
     const id = str(m.id);
     const gameKey = gameKeyOf(str(m.eventId) ?? '');
     if (type && id && gameKey) marketInfo.set(id, { gameKey, type, suspended: m.isSuspended === true });
@@ -321,7 +362,16 @@ export function parseDkProps(body: unknown, gameKeyOf: (eventId: string) => stri
     const odds = toOdds(s.trueOdds, isObj(s.displayOdds) ? s.displayOdds.american : undefined);
     const key = name ? playerKey(name) : '';
     if (!name || !key || !odds) continue;
-    out.push({ book: 'draftkings', gameKey: m.gameKey, market: m.type, side: `p:${key}`, line: null, player: name, ...odds,
+    let side: `p:${string}` = `p:${key}`;
+    let line: number | null = null;
+    if (m.type.startsWith('prop:')) {
+      const ou = (str(s.outcomeType) ?? str(s.label) ?? '').toLowerCase();
+      const points = numOr(s.points);
+      if ((ou !== 'over' && ou !== 'under') || points === undefined) continue;
+      side = `p:${key}:${ou}`;
+      line = points;
+    }
+    out.push({ book: 'draftkings', gameKey: m.gameKey, market: m.type, side, line, player: name, ...odds,
       suspended: m.suspended || s.isSuspended === true, sourceTs: ts.sourceTs, receivedTs: ts.receivedTs });
   }
   return out;

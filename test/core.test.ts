@@ -125,3 +125,37 @@ describe('best price for player over/unders', () => {
     expect(pickBest([q('p:x:under', 58.5, -114), { ...q('p:x:under', 57.5, -110), book: 'fanduel' }])!.line).toBe(58.5);
   });
 });
+
+import { dkPropPaths } from '../src/books/draftkings/normalize.js';
+describe('DraftKings over/under props (shape from a real response, Oct 20)', () => {
+  const ts = { sourceTs: 1, receivedTs: 1 };
+  const brown = [{ name: 'A.J. Brown', type: 'Player' }];
+  const body = {
+    markets: [
+      { id: '380409817', eventId: '34118033', name: 'A.J. Brown Receiving Yards O/U', marketType: { id: '13674', name: 'Receiving Yards O/U' } },
+      { id: '380409739', eventId: '34118033', name: 'A.J. Brown Receiving Yards O/U - 1st Quarter', marketType: { id: '15516', name: 'Receiving Yards O/U - 1st Quarter' } },
+      { id: '380409719', eventId: '34118033', name: 'A.J. Brown Receiving Yards', marketType: { id: '12331', name: 'Receiving Yards Milestones' } },
+    ],
+    selections: [
+      { marketId: '380409817', label: 'Over', outcomeType: 'Over', points: 68.5, displayOdds: { american: '−114' }, trueOdds: 1.87719299, participants: brown },
+      { marketId: '380409817', label: 'Under', outcomeType: 'Under', points: 68.5, displayOdds: { american: '−110' }, trueOdds: 1.90909091, participants: brown },
+      { marketId: '380409739', label: 'Over', outcomeType: 'Over', points: 10.5, displayOdds: { american: '−111' }, trueOdds: 1.9, participants: brown },
+      { marketId: '380409719', label: '25+', displayOdds: { american: '−1240' }, trueOdds: 1.08, participants: brown },
+    ],
+  };
+  it('reads Over/Under at the line, keyed by player and stat; skips quarters and milestones', () => {
+    const qs = parseDkProps(body, () => 'nfl:2026-10-22:NE@CHI', ts);
+    expect(qs.map((q) => [q.market, q.side, q.line, q.american])).toEqual([
+      ['prop:receiving_yds', 'p:aj-brown:over', 68.5, -114],
+      ['prop:receiving_yds', 'p:aj-brown:under', 68.5, -110],
+    ]);
+  });
+  it('finds O/U sections in the section list, not milestones or quarters', () => {
+    const league = { subcategories: [
+      { id: 14114, categoryId: 1342, name: 'Rec Yards O/U' }, { id: 14115, categoryId: 1342, name: 'Receptions O/U' },
+      { id: 15004, categoryId: 1000, name: 'Pass Yards - 1Q O/U' }, { id: 16569, categoryId: 1000, name: 'Pass Yards' },
+      { id: 4651, categoryId: 529, name: 'Conference Winner' },
+    ] };
+    expect(dkPropPaths(league)).toEqual(['/categories/1003/subcategories/12438', '/categories/1342/subcategories/14114', '/categories/1342/subcategories/14115']);
+  });
+});

@@ -105,6 +105,13 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
       api.set(ctl[1] as 'dk-rest', ctl[2] === 'up');
       return send(200, { ok: true });
     }
+    if (url.pathname === '/dk/leagues/categories/1000/subcategories/90001' || url.pathname === '/dk/leagues/categories/1342/subcategories/14115') {
+      if (!up['dk-rest']) return send(403, '<html>Access Denied</html>', { 'Content-Type': 'text/html' });
+      const [n, type, line] = url.pathname.endsWith('90001') ? ['Drake Maye', 'Passing Yards O/U', 244.5] as const : ['A.J. Brown', 'Receptions O/U', 5.5] as const;
+      const pm = events.map((e) => ({ id: `ou${type.length}${String(e.id)}`, eventId: e.id, name: `${n} ${type}`, marketType: { id: '13674', name: type } }));
+      const ps = pm.flatMap((m) => (['Over', 'Under'] as const).map((o) => ({ id: `${m.id}_${o}`, marketId: m.id, label: o, outcomeType: o, points: line, participants: [{ name: n, type: 'Player' }], displayOdds: { american: disp(-112) }, trueOdds: dec(-112) })));
+      return send(200, { events: [], markets: pm, selections: ps });
+    }
     if (url.pathname === '/dk/leagues/categories/1003/subcategories/12438') {
       if (!up['dk-rest']) return send(403, '<html>Access Denied</html>', { 'Content-Type': 'text/html' });
       const players = [['A.J. Brown', 170], ['Rhamondre Stevenson', 200], ["D'Andre Swift", 195]] as const;
@@ -119,6 +126,7 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
       if (!up['dk-rest']) return send(403, '<html>Access Denied</html>', { 'Content-Type': 'text/html' });
       return send(200, {
         events, markets, selections: sels.map(dkSel),
+        subcategories: [{ id: 12438, categoryId: 1003, name: 'TD Scorer' }, { id: 90001, categoryId: 1000, name: 'Pass Yards O/U' }, { id: 14115, categoryId: 1342, name: 'Receptions O/U' }, { id: 15004, categoryId: 1000, name: 'Pass Yards - 1Q O/U' }, { id: 16569, categoryId: 1000, name: 'Pass Yards' }],
         subscriptionPartials: { 'league-markets-88808': { entity: 'markets', query: "$filter=leagueId eq '88808'" } },
       });
     }

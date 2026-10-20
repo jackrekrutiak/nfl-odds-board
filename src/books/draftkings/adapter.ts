@@ -4,7 +4,7 @@ import { SkewEstimator } from '../../core/latency.js';
 import type { BookHealth, Quote } from '../../core/types.js';
 import { quoteKey } from '../../core/types.js';
 import { backoff, fetchJson, HealthTracker, isObj, str, type AdapterSink, type BookAdapter } from '../adapter.js';
-import { DK_TD_PATH, DkBoard, parseDkProps, parseDkTime, type DkFrameData } from './normalize.js';
+import { DK_TD_PATH, DkBoard, dkPropPaths, parseDkProps, parseDkTime, type DkFrameData } from './normalize.js';
 
 /**
  * DraftKings: the two channels their own web client uses.
@@ -37,6 +37,7 @@ export class DraftKingsAdapter implements BookAdapter {
   private snapshotInFlight: Promise<void> | null = null;
   private propQuotes = new Map<string, Quote>(); // player props, by quote key
   private gameKeyByEvent = new Map<string, string>();
+  private propPaths: string[] = [DK_TD_PATH];
 
   constructor(private readonly cfg: Config['dk'], staleAfterMs: number) {
     this.h = new HealthTracker('draftkings', 'push', staleAfterMs);
@@ -128,6 +129,7 @@ export class DraftKingsAdapter implements BookAdapter {
       this.h.contact();
       this.board.load(body);
       this.readPartials(body);
+      this.propPaths = dkPropPaths(body);
 
       const { games, quotes } = this.board.normalize(undefined, { sourceTs: receivedTs, receivedTs });
       this.emittedByEvent.clear();
@@ -157,12 +159,16 @@ export class DraftKingsAdapter implements BookAdapter {
   private async pollProps(): Promise<void> {
     if (this.stopped) return;
     try {
-      const { body } = await fetchJson(this.snapshotUrl + DK_TD_PATH, {
-        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate, br', Origin: 'https://sportsbook.draftkings.com', Referer: 'https://sportsbook.draftkings.com/' },
-        timeoutMs: 8_000,
-      });
-      const receivedTs = Date.now();
-      const quotes = parseDkProps(body, (id) => this.gameKeyByEvent.get(id), { sourceTs: receivedTs, receivedTs });
+      // One section at a time (TD scorers + each over/under section), so DraftKings sees a gentle trickle.
+      const quotes: Quote[] = [];
+      for (const path of this.propPaths) {
+        const { body } = await fetchJson(this.snapshotUrl + path, {
+          headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate, br', Origin: 'https://sportsbook.draftkings.com', Referer: 'https://sportsbook.draftkings.com/' },
+          timeoutMs: 8_000,
+        });
+        const receivedTs = Date.now();
+        quotes.push(...parseDkProps(body, (id) => this.gameKeyByEvent.get(id), { sourceTs: receivedTs, receivedTs }));
+      }
       const next = new Map(quotes.map((q) => [quoteKey(q), q]));
       const removed = [...this.propQuotes.keys()].filter((k) => !next.has(k));
       this.propQuotes = next;
