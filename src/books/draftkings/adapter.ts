@@ -1,10 +1,10 @@
 import WebSocket from 'ws';
 import { BROWSER_UA, type Config } from '../../config.js';
 import { SkewEstimator } from '../../core/latency.js';
-import type { BookHealth } from '../../core/types.js';
+import type { BookHealth, Quote } from '../../core/types.js';
 import { quoteKey } from '../../core/types.js';
 import { backoff, fetchJson, HealthTracker, isObj, str, type AdapterSink, type BookAdapter } from '../adapter.js';
-import { DkBoard, parseDkTime, type DkFrameData } from './normalize.js';
+import { DK_TD_PATH, DkBoard, parseDkProps, parseDkTime, type DkFrameData } from './normalize.js';
 
 /**
  * DraftKings: the two channels their own web client uses.
@@ -35,6 +35,8 @@ export class DraftKingsAdapter implements BookAdapter {
   private counters = { frames: 0, snapshots: 0, snapshotErrors: 0, unresolved: 0, resyncCorrections: 0, reconnects: 0 };
   private lastSnapshotMs: number | null = null;
   private snapshotInFlight: Promise<void> | null = null;
+  private propQuotes = new Map<string, Quote>(); // player props, by quote key
+  private gameKeyByEvent = new Map<string, string>();
 
   constructor(private readonly cfg: Config['dk'], staleAfterMs: number) {
     this.h = new HealthTracker('draftkings', 'push', staleAfterMs);
@@ -48,6 +50,7 @@ export class DraftKingsAdapter implements BookAdapter {
     this.sink = sink;
     this.stopped = false;
     void this.bootstrap();
+    if (this.cfg.propsEnabled) this.later(() => void this.pollProps(), 2_000);
     // Integrity re-check + fallback scheduler: one loop decides between "check every minute" and "poll".
     this.pollTimer = setInterval(() => this.tick(), 1_000);
   }
@@ -129,9 +132,11 @@ export class DraftKingsAdapter implements BookAdapter {
       const { games, quotes } = this.board.normalize(undefined, { sourceTs: receivedTs, receivedTs });
       this.emittedByEvent.clear();
       const eventOf = new Map(games.map((g) => [g.gameKey, g.bookEventId]));
+      this.gameKeyByEvent = new Map(games.map((g) => [g.bookEventId, g.gameKey]));
       for (const q of quotes) this.track(q.gameKey, quoteKey(q), eventOf.get(q.gameKey));
       // The store diffs; on a re-check while live, any change is something the socket didn't deliver.
-      const changed = this.sink.snapshot({ book: 'draftkings', games, quotes });
+      // Props come from their own section; carry them so a game-line re-check doesn't read as their removal.
+      const changed = this.sink.snapshot({ book: 'draftkings', games, quotes: [...quotes, ...this.propQuotes.values()] });
       if (changed) this.h.changed();
       if (reason === 'resync' && this.subscribedAt) this.counters.resyncCorrections += changed;
       if (!this.subscribedAt) this.h.state = 'polling';
@@ -144,6 +149,28 @@ export class DraftKingsAdapter implements BookAdapter {
       this.sink.log('draftkings snapshot failed', { reason, error: String(err) });
       throw err;
     }
+  }
+
+  /* ---------------- player props ---------------- */
+
+  /** TD scorer props from DraftKings' TD Scorers section, polled like the REST fallback. */
+  private async pollProps(): Promise<void> {
+    if (this.stopped) return;
+    try {
+      const { body } = await fetchJson(this.snapshotUrl + DK_TD_PATH, {
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate, br', Origin: 'https://sportsbook.draftkings.com', Referer: 'https://sportsbook.draftkings.com/' },
+        timeoutMs: 8_000,
+      });
+      const receivedTs = Date.now();
+      const quotes = parseDkProps(body, (id) => this.gameKeyByEvent.get(id), { sourceTs: receivedTs, receivedTs });
+      const next = new Map(quotes.map((q) => [quoteKey(q), q]));
+      const removed = [...this.propQuotes.keys()].filter((k) => !next.has(k));
+      this.propQuotes = next;
+      if (this.sink.delta({ book: 'draftkings', quotes, removed })) this.h.changed();
+    } catch (err) {
+      this.sink.log('draftkings props failed', { error: String(err) });
+    }
+    this.later(() => void this.pollProps(), this.cfg.propsMs);
   }
 
   private readPartials(body: unknown): void {

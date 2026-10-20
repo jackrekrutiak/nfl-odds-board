@@ -100,6 +100,16 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
       api.set(ctl[1] as 'dk-rest', ctl[2] === 'up');
       return send(200, { ok: true });
     }
+    if (url.pathname === '/dk/leagues/categories/1003/subcategories/12438') {
+      if (!up['dk-rest']) return send(403, '<html>Access Denied</html>', { 'Content-Type': 'text/html' });
+      const players = [['A.J. Brown', 170], ['Rhamondre Stevenson', 200], ["D'Andre Swift", 195]] as const;
+      const pm = events.map((e) => ({ id: `td${String(e.id)}`, eventId: e.id, marketType: { id: '11019', name: 'Anytime Touchdown Scorer' } }));
+      const ps = pm.flatMap((m, i) => players.map(([n, a], k) => {
+        const am = a + ((i + k) % 3) * 10 - 10;
+        return { id: `${m.id}_${k}`, marketId: m.id, label: n, participants: [{ name: n, type: 'Player' }], displayOdds: { american: disp(am) }, trueOdds: dec(am) };
+      }));
+      return send(200, { events: [], markets: pm, selections: ps });
+    }
     if (url.pathname === '/dk/leagues') {
       if (!up['dk-rest']) return send(403, '<html>Access Denied</html>', { 'Content-Type': 'text/html' });
       return send(200, {

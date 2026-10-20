@@ -1,4 +1,5 @@
 import { toOdds } from '../../core/odds.js';
+import { playerKey } from '../../core/players.js';
 import { makeGameKey, resolveTeam, splitMatchup } from '../../core/teams.js';
 import type { BookGame, MarketType, Quote, SideKey, Team } from '../../core/types.js';
 import { isObj, numOr, str } from '../adapter.js';
@@ -292,4 +293,36 @@ function sideOf(game: BookGame, market: MarketType, s: Raw): SideKey | null {
   if (t?.id === game.home.id) return 'home';
   if (t?.id === game.away.id) return 'away';
   return null;
+}
+
+/** DraftKings' TD Scorers section (category 1003, subcategory 12438). Shape taken from a real response:
+ *  markets[] { id, eventId, marketType { id: '11019', name: 'Anytime Touchdown Scorer' } }
+ *  selections[] { marketId, label, participants[{ name, type: 'Player' }], displayOdds.american, trueOdds } */
+export const DK_TD_PATH = '/categories/1003/subcategories/12438';
+const DK_PROP_TYPES: Record<string, MarketType> = { '11019': 'td_anytime' };
+
+export function parseDkProps(body: unknown, gameKeyOf: (eventId: string) => string | undefined, ts: { sourceTs: number; receivedTs: number }): Quote[] {
+  const b = isObj(body) ? body : {};
+  const marketInfo = new Map<string, { gameKey: string; type: MarketType; suspended: boolean }>();
+  for (const m of Array.isArray(b.markets) ? b.markets : []) {
+    if (!isObj(m)) continue;
+    const type = DK_PROP_TYPES[(isObj(m.marketType) ? str(m.marketType.id) : undefined) ?? ''];
+    const id = str(m.id);
+    const gameKey = gameKeyOf(str(m.eventId) ?? '');
+    if (type && id && gameKey) marketInfo.set(id, { gameKey, type, suspended: m.isSuspended === true });
+  }
+  const out: Quote[] = [];
+  for (const s of Array.isArray(b.selections) ? b.selections : []) {
+    if (!isObj(s)) continue;
+    const m = marketInfo.get(str(s.marketId) ?? '');
+    if (!m) continue;
+    const player = (Array.isArray(s.participants) ? s.participants : []).find((p) => isObj(p) && p.type === 'Player');
+    const name = (isObj(player) ? str(player.name) : undefined) ?? str(s.label);
+    const odds = toOdds(s.trueOdds, isObj(s.displayOdds) ? s.displayOdds.american : undefined);
+    const key = name ? playerKey(name) : '';
+    if (!name || !key || !odds) continue;
+    out.push({ book: 'draftkings', gameKey: m.gameKey, market: m.type, side: `p:${key}`, line: null, player: name, ...odds,
+      suspended: m.suspended || s.isSuspended === true, sourceTs: ts.sourceTs, receivedTs: ts.receivedTs });
+  }
+  return out;
 }

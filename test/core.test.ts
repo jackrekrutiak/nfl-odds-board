@@ -92,3 +92,27 @@ describe('player keys', () => {
     expect(playerKey('Kenneth Walker Jr.')).toBe('kenneth-walker');
   });
 });
+
+import { parseDkProps } from '../src/books/draftkings/normalize.js';
+describe('DraftKings TD scorer props (shape from a real response, Oct 20)', () => {
+  const real = {
+    markets: [
+      { id: '380414163', eventId: '34118033', name: 'Anytime TD Scorer', marketType: { id: '11019', name: 'Anytime Touchdown Scorer' } },
+      { id: '357446000', eventId: '34118033', name: 'First TD Scorer', marketType: { id: '11018', name: '1st Touchdown Scorer' } },
+    ],
+    selections: [
+      { marketId: '380818862', label: 'Jahmyr Gibbs', displayOdds: { american: '+155' }, trueOdds: 2.55, outcomeType: 'To Score 2 Or More', participants: [{ name: 'Jahmyr Gibbs', type: 'Player' }] },
+      { marketId: '380414163', label: "D'Andre Swift", displayOdds: { american: '+150' }, trueOdds: 2.5, participants: [{ name: "D'Andre Swift", type: 'Player' }] },
+      { marketId: '357446000', label: "D'Andre Swift", displayOdds: { american: '+750' }, trueOdds: 8.5, participants: [{ name: "D'Andre Swift", type: 'Player' }] },
+    ],
+  };
+  const ts = { sourceTs: 1, receivedTs: 1 };
+  it('keeps only Anytime TD prices, keyed by player, on the right game', () => {
+    const qs = parseDkProps(real, (id) => (id === '34118033' ? 'nfl:2026-10-22:NE@CHI' : undefined), ts);
+    expect(qs).toHaveLength(1);
+    expect(qs[0]).toMatchObject({ book: 'draftkings', gameKey: 'nfl:2026-10-22:NE@CHI', market: 'td_anytime', side: 'p:dandre-swift', player: "D'Andre Swift", american: 150, line: null });
+  });
+  it('drops props for games it cannot place', () => {
+    expect(parseDkProps(real, () => undefined, ts)).toHaveLength(0);
+  });
+});

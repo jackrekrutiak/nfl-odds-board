@@ -30,6 +30,9 @@ export const config = {
     resyncMs: num(env.DK_RESYNC_MS, 60_000), // integrity check while the socket is live
     pollMs: num(env.DK_POLL_MS, 3_000), // fallback cadence while the socket is down
     wsFallbackAfterMs: num(env.DK_WS_FALLBACK_AFTER_MS, 10_000),
+    // Player props (TD Scorers section) read from REST every DK_PROPS_MS; next step is subscribing them on the socket.
+    propsEnabled: bool(env.DK_PROPS_ENABLED, true),
+    propsMs: num(env.DK_PROPS_MS, 10_000),
   },
 
   fd: {
