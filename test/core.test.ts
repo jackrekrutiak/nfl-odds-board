@@ -82,3 +82,13 @@ describe('store', () => {
     expect(s.allQuotes()[0]!.american).toBe(-120);
   });
 });
+
+import { playerKey } from '../src/core/players.js';
+describe('player keys', () => {
+  it('match however a book spells the name', () => {
+    expect(playerKey("D'Andre Swift")).toBe('dandre-swift');
+    expect(playerKey('A.J. Brown')).toBe('aj-brown');
+    expect(playerKey('Luther Burden III')).toBe(playerKey('Luther Burden'));
+    expect(playerKey('Kenneth Walker Jr.')).toBe('kenneth-walker');
+  });
+});

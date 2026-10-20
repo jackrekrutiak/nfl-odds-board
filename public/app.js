@@ -232,7 +232,27 @@ function gameHtml(g) {
     ${cellHtml(g.key, 'spread', 'away')}${cellHtml(g.key, 'total', 'over')}${cellHtml(g.key, 'moneyline', 'away')}
     ${team(g.home, g.live ? g.score?.home : undefined)}
     ${cellHtml(g.key, 'spread', 'home')}${cellHtml(g.key, 'total', 'under')}${cellHtml(g.key, 'moneyline', 'home')}
-  </article>`;
+  </article>${propsHtml(g)}`;
+}
+
+/* Player props: one row per player, best price across books, same cells as the game lines. */
+const openProps = new Set();
+document.addEventListener('toggle', (e) => {
+  const gk = e.target?.dataset?.props;
+  if (gk) e.target.open ? openProps.add(gk) : openProps.delete(gk);
+}, true);
+function propsHtml(g) {
+  const players = new Map();
+  const prefix = `${g.key}|td_anytime|`;
+  for (const [k, q] of state.quotes) if (k.startsWith(prefix)) {
+    const p = players.get(q.side) ?? { side: q.side, name: q.player ?? q.side.slice(2), best: Infinity };
+    p.best = Math.min(p.best, q.decimal);
+    players.set(q.side, p);
+  }
+  if (!players.size) return '';
+  const rows = [...players.values()].sort((a, b) => a.best - b.best || a.name.localeCompare(b.name))
+    .map((p) => `<div class="prop-row"><span class="pname">${esc(p.name)}</span>${cellHtml(g.key, 'td_anytime', p.side)}</div>`).join('');
+  return `<details class="props" data-props="${esc(g.key)}"${openProps.has(g.key) ? ' open' : ''}><summary>Anytime TD scorer <span class="count">${players.size} players</span></summary><div class="prop-list">${rows}</div></details>`;
 }
 
 function cellHtml(gk, market, side) {
@@ -272,10 +292,10 @@ function renderMoves() {
   const now = Date.now();
   el.innerHTML = state.moves.map((m) => {
     const g = state.games.get(m.q.gameKey);
-    const team = !g ? '' : m.q.side === 'over' ? 'Over' : m.q.side === 'under' ? 'Under' : g[m.q.side].id;
+    const team = m.q.player ? esc(m.q.player) : !g ? '' : m.q.side === 'over' ? 'Over' : m.q.side === 'under' ? 'Under' : g[m.q.side]?.id ?? '';
     const matchup = g ? `${g.away.id} @ ${g.home.id}` : '';
     const since = now - m.at;
-    const mk = { spread: 'spread', total: 'total', moneyline: 'ML' }[m.q.market];
+    const mk = { spread: 'spread', total: 'total', moneyline: 'ML', td_anytime: 'anytime TD' }[m.q.market];
     return `<li${since < FLASH_MS ? ` class="fresh" style="animation-delay:-${since}ms"` : ''}><span class="badge ${m.q.book}">${BOOK_SHORT[m.q.book]}</span><span class="what"><b>${team}</b> ${mk} · ${matchup}</span><span class="t">${fmtAge(serverNow() - (m.at + state.offset)).replace(' ago', '')}</span>
       <span class="chg">${fmtLine(m.q.market, m.q.side, m.prev.line)}${fmtPrice(m.prev.american)} → <span class="${m.dir > 0 ? 'up' : 'down'}">${fmtLine(m.q.market, m.q.side, m.q.line)}${fmtPrice(m.q.american)} ${m.dir > 0 ? '▲' : '▼'}</span></span></li>`;
   }).join('');

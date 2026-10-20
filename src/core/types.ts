@@ -3,8 +3,9 @@
 export type BookId = 'draftkings' | 'fanduel';
 export const BOOKS: BookId[] = ['draftkings', 'fanduel'];
 
-export type MarketType = 'moneyline' | 'spread' | 'total';
-export type SideKey = 'away' | 'home' | 'over' | 'under';
+export type MarketType = 'moneyline' | 'spread' | 'total' | 'td_anytime';
+/** Game lines use away/home/over/under; player props use `p:<player key>` (see core/players.ts). */
+export type SideKey = 'away' | 'home' | 'over' | 'under' | `p:${string}`;
 
 export interface Team {
   id: string; // canonical abbreviation, e.g. "DET"
@@ -22,6 +23,8 @@ export interface Quote {
   american: number;
   decimal: number;
   suspended: boolean;
+  /** Player props only: the player's display name. */
+  player?: string;
   /** When the book says the price changed (DK createdTime) or, if the book gives no clock, when we read it. */
   sourceTs: number;
   /** When our server had it. */

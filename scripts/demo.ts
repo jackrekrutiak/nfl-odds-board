@@ -8,6 +8,7 @@ Object.assign(process.env, {
   DK_WS_URL: `ws://127.0.0.1:${mock.port}/dk/ws`,
   FD_PAGE_URL: `${base}/fd/page`,
   FD_PRICES_URL: `${base}/fd/prices`,
+  FD_EVENT_URL: `${base}/fd/event`,
   FD_PAGE_MS: '5000',
 });
 const { buildApp } = await import('../src/server/main.js');

@@ -1,4 +1,5 @@
 import { toOdds } from '../../core/odds.js';
+import { playerKey } from '../../core/players.js';
 import { makeGameKey, resolveTeam, splitMatchup } from '../../core/teams.js';
 import type { BookGame, MarketType, Quote, SideKey } from '../../core/types.js';
 import { isObj, numOr, str } from '../adapter.js';
@@ -17,8 +18,15 @@ const TYPE_MAP: Record<string, MarketType> = {
   'TOTAL_POINTS_(OVER/UNDER)': 'total',
 };
 
+/** Player props read from each game's event page (tab=td-scorer-props). Yes-only: one price per player, no line. */
+export const PROP_TYPES: Record<string, MarketType> = {
+  ANY_TIME_TOUCHDOWN_SCORER: 'td_anytime',
+};
+const LINELESS = new Set<MarketType>(['moneyline', 'td_anytime']);
+
 export interface FdRunner {
   selectionId: string;
+  player?: string;
   side: SideKey;
   line: number | null;
   american: number;
@@ -39,6 +47,7 @@ export interface FdMarket {
 export class FdBoard {
   games = new Map<string, BookGame>(); // by eventId
   markets = new Map<string, FdMarket>(); // by marketId
+  propMarkets = new Map<string, FdMarket>(); // by marketId, from each game's event page
   invalid = 0;
 
   loadPage(page: unknown, keepPriceOverlay = false): void {
@@ -89,6 +98,30 @@ export class FdBoard {
     this.markets = next;
   }
 
+  /** Load one game's props tab. Replaces that game's prop markets; keeps fresher prices from the price channel. */
+  loadProps(eventId: string, page: unknown): number {
+    const att = isObj(page) && isObj(page.attachments) ? page.attachments : {};
+    const markets = isObj(att.markets) ? att.markets : {};
+    const next = new Map<string, FdMarket>();
+    for (const raw of Object.values(markets)) {
+      if (!isObj(raw) || str(raw.eventId) !== eventId) continue;
+      const type = PROP_TYPES[str(raw.marketType) ?? ''];
+      const marketId = str(raw.marketId);
+      if (!type || !marketId) continue;
+      const m: FdMarket = { marketId, eventId, type, suspended: isSuspended(raw.marketStatus), inPlay: raw.inPlay === true, runners: new Map() };
+      for (const r of Array.isArray(raw.runners) ? raw.runners : []) {
+        const runner = toPropRunner(r);
+        if (runner) m.runners.set(runner.selectionId, runner);
+      }
+      const old = this.propMarkets.get(marketId);
+      if (old) for (const [sid, r] of m.runners) { const o = old.runners.get(sid); if (o?.fromPrices) m.runners.set(sid, o); }
+      if (m.runners.size) next.set(marketId, m);
+    }
+    for (const [id, m] of this.propMarkets) if (m.eventId === eventId) this.propMarkets.delete(id);
+    for (const [id, m] of next) this.propMarkets.set(id, m);
+    return next.size;
+  }
+
   /** Overlay the price channel's answer. Returns selection ids we don't know (→ structure refresh). */
   applyPrices(entries: unknown[]): { unknown: number; updated: number } {
     let unknown = 0;
@@ -98,11 +131,13 @@ export class FdBoard {
         this.invalid++;
         continue;
       }
-      const m = this.markets.get(str(e.marketId) ?? '');
+      const id = str(e.marketId) ?? '';
+      const m = this.markets.get(id) ?? this.propMarkets.get(id);
       if (!m) continue;
       const status = (str(e.marketStatus) ?? 'OPEN').toUpperCase();
       if (status === 'CLOSED') {
         this.markets.delete(m.marketId);
+        this.propMarkets.delete(m.marketId);
         continue;
       }
       m.suspended = status === 'SUSPENDED';
@@ -121,7 +156,7 @@ export class FdBoard {
         }
         const odds = oddsOf(r.winRunnerOdds);
         if (!odds) continue;
-        const line = m.type === 'moneyline' ? null : (numOr(r.handicap) ?? known.line);
+        const line = LINELESS.has(m.type) ? null : (numOr(r.handicap) ?? known.line);
         const next = { ...known, ...odds, line, suspended: isSuspended(r.runnerStatus), fromPrices: true };
         m.runners.set(known.selectionId, next);
         updated++;
@@ -132,7 +167,7 @@ export class FdBoard {
 
   marketIds(which: 'all' | 'live' | 'pregame' = 'all'): string[] {
     const out: string[] = [];
-    for (const [id, m] of this.markets) {
+    for (const [id, m] of [...this.markets, ...this.propMarkets]) {
       const live = m.inPlay || this.games.get(m.eventId)?.live === true;
       if (which === 'all' || (which === 'live') === live) out.push(id);
     }
@@ -141,11 +176,12 @@ export class FdBoard {
 
   normalize(ts: { sourceTs: number; receivedTs: number }): { games: BookGame[]; quotes: Quote[] } {
     const quotes: Quote[] = [];
-    for (const m of this.markets.values()) {
+    for (const m of [...this.markets.values(), ...this.propMarkets.values()]) {
       const g = this.games.get(m.eventId);
       if (!g) continue;
       for (const r of m.runners.values()) {
         quotes.push({
+          ...(r.player ? { player: r.player } : {}),
           book: 'fanduel',
           gameKey: g.gameKey,
           market: m.type,
@@ -195,4 +231,17 @@ function toRunner(r: unknown, type: MarketType): FdRunner | null {
   const line = type === 'moneyline' ? null : (numOr(r.handicap) ?? null);
   if (type !== 'moneyline' && line === null) return null;
   return { selectionId, side, line, ...odds, suspended: status === 'SUSPENDED' };
+}
+
+function toPropRunner(r: unknown): FdRunner | null {
+  if (!isObj(r)) return null;
+  const selectionId = str(r.selectionId);
+  const name = str(r.runnerName);
+  const odds = oddsOf(r.winRunnerOdds);
+  const status = (str(r.runnerStatus) ?? 'ACTIVE').toUpperCase();
+  if (!selectionId || !name || !odds || status === 'REMOVED' || status === 'CLOSED') return null;
+  if (/^no (touchdown|td)/i.test(name)) return null; // "No Touchdown Scorer" is not a player
+  const key = playerKey(name);
+  if (!key) return null;
+  return { selectionId, player: name, side: `p:${key}`, line: null, ...odds, suspended: status === 'SUSPENDED' };
 }

@@ -159,3 +159,13 @@ body { max-width: 1320px; margin: 0 auto; padding: 0 16px 20px; }
 @media (prefers-reduced-motion: reduce) {
   .cell.flash-up, .cell.flash-down, .cell.best-new::after, #moves li.fresh, .chip.live .dot, .live-dot { animation: none; }
 }
+
+/* Player props under a game */
+.props { margin: -4px 0 10px; border: 1px solid var(--line, #2a313b); border-top: none; border-radius: 0 0 10px 10px; padding: 0 12px; }
+.props summary { cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--muted, #8b949e); list-style: none; }
+.props summary::before { content: "▸ "; }
+.props[open] summary::before { content: "▾ "; }
+.props .count { margin-left: 6px; opacity: .8; }
+.prop-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; padding-bottom: 10px; }
+.prop-row { display: grid; grid-template-columns: minmax(0, 1fr) 128px; align-items: center; gap: 8px; min-width: 0; }
+.prop-row .pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }

@@ -43,6 +43,10 @@ export const config = {
     livePricesMs: num(env.FD_LIVE_PRICES_MS, 1_000), // in-game markets move far more often: poll them faster
     pageMs: num(env.FD_PAGE_MS, 30_000), // structure: matches the page's CDN max-age
     pricesEnabled: bool(env.FD_PRICES_ENABLED, true),
+    // Player props: each game's event page (structure) every FD_PROPS_MS; their prices ride the price channel.
+    propsEnabled: bool(env.FD_PROPS_ENABLED, true),
+    propsMs: num(env.FD_PROPS_MS, 60_000),
+    eventUrl: env.FD_EVENT_URL,
   },
 
   // Render's free tier sleeps after 15 min with no inbound traffic, which would drop the DK socket.

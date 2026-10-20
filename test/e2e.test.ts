@@ -45,7 +45,12 @@ describe('end to end', { timeout: 30_000 }, () => {
     await until(async () => (await stateOf('draftkings')) === 'live' && (await stateOf('fanduel')) === 'live');
     const b = await board();
     expect(b.quotes.filter((q) => q.book === 'draftkings')).toHaveLength(36);
-    expect(b.quotes.filter((q) => q.book === 'fanduel')).toHaveLength(36);
+    expect(b.quotes.filter((q) => q.book === 'fanduel' && q.market !== 'td_anytime')).toHaveLength(36);
+    // Player props: Anytime TD, one yes-price per player, matched by player key, with the name for display.
+    const props = b.quotes.filter((q) => q.market === 'td_anytime');
+    expect(props).toHaveLength(18);
+    expect(props.every((q) => q.side.startsWith('p:') && q.line === null && !!q.player)).toBe(true);
+    expect(props.some((q) => q.side === 'p:dandre-swift' && q.player === "D'Andre Swift")).toBe(true);
     const dkKeys = new Set(b.quotes.filter((q) => q.book === 'draftkings').map((q) => q.gameKey));
     const fdKeys = new Set(b.quotes.filter((q) => q.book === 'fanduel').map((q) => q.gameKey));
     expect([...dkKeys].sort()).toEqual([...fdKeys].sort());

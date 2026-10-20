@@ -24,6 +24,7 @@ export class FanDuelAdapter implements BookAdapter {
   private etag: string | null = null;
   private pageTimer: NodeJS.Timeout | null = null;
   private priceTimer: NodeJS.Timeout | null = null;
+  private propsTimer: NodeJS.Timeout | null = null;
   private pageAttempt = 0;
   private priceAttempt = 0;
   private pricesHealthy = false;
@@ -31,7 +32,7 @@ export class FanDuelAdapter implements BookAdapter {
   private lastPageAt = 0;
   private lastPregamePollAt = 0;
   private pagePromise: Promise<void> | null = null;
-  private counters = { pageReads: 0, page304: 0, pageErrors: 0, pricePolls: 0, priceErrors: 0, priceUpdates: 0, unknownSelections: 0 };
+  private counters = { pageReads: 0, page304: 0, pageErrors: 0, pricePolls: 0, priceErrors: 0, priceUpdates: 0, unknownSelections: 0, propMarkets: 0 };
   private lastRtt: { page: number | null; prices: number | null } = { page: null, prices: null };
 
   constructor(private readonly cfg: Config['fd'], staleAfterMs: number) {
@@ -48,6 +49,7 @@ export class FanDuelAdapter implements BookAdapter {
     this.stopped = true;
     if (this.pageTimer) clearTimeout(this.pageTimer);
     if (this.priceTimer) clearTimeout(this.priceTimer);
+    if (this.propsTimer) clearTimeout(this.propsTimer);
   }
 
   health(): BookHealth {
@@ -89,6 +91,7 @@ export class FanDuelAdapter implements BookAdapter {
         this.pageAttempt = 0;
         this.schedulePage(this.cfg.pageMs);
         if (!this.priceTimer && this.cfg.pricesEnabled) this.schedulePrices(0);
+        if (!this.propsTimer && this.cfg.propsEnabled) this.scheduleProps(0);
       } catch (err) {
         const retryAfter = err instanceof HttpError && err.status === 429 ? 30_000 : 0;
         this.schedulePage(Math.max(retryAfter, backoff(this.pageAttempt++, 1_000, 30_000)));
@@ -142,6 +145,34 @@ export class FanDuelAdapter implements BookAdapter {
       this.sink.log('fanduel page failed', { error: String(err) });
       throw err;
     }
+  }
+
+  /* ---------------- player props ---------------- */
+
+  /** Each game's props tab is structure (who has a price, which market ids). Read gently, one game at a time;
+   *  once a prop market is known, its prices are polled by the price channel like any game line. */
+  private scheduleProps(ms: number): void {
+    if (this.stopped) return;
+    this.propsTimer = setTimeout(async () => {
+      await this.readProps().catch((err) => this.sink.log('fanduel props failed', { error: String(err) }));
+      this.scheduleProps(this.cfg.propsMs);
+    }, ms);
+  }
+
+  private async readProps(): Promise<void> {
+    const base = this.cfg.eventUrl ?? this.cfg.pageUrl.replace('content-managed-page', 'event-page');
+    let markets = 0;
+    for (const eventId of [...this.board.games.keys()]) {
+      if (this.stopped) return;
+      const url = new URL(base);
+      url.searchParams.set('_ak', this.cfg.apiKey);
+      url.searchParams.set('eventId', eventId);
+      url.searchParams.set('tab', 'td-scorer-props');
+      const { body } = await fetchJson(url.toString(), { headers: this.headers(), timeoutMs: 8_000 });
+      markets += this.board.loadProps(eventId, body);
+    }
+    this.counters.propMarkets = markets;
+    this.publish();
   }
 
   /* ---------------- prices ---------------- */

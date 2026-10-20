@@ -75,6 +75,8 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
     const off = (n: number) => n + (i % 2 ? 5 : -5); // FD a few cents off DK, so "best" varies
     fdMarkets[`801.${fdEv}1`] = { marketId: `801.${fdEv}1`, eventId: fdEv, marketType: 'MONEY_LINE', marketStatus: 'OPEN', inPlay: false, runners: [runner(i * 10 + 1, fdA, 'AWAY', 0, spread < 0 ? 125 : -155), runner(i * 10 + 2, fdH, 'HOME', 0, spread < 0 ? -145 : 135)] };
     fdMarkets[`801.${fdEv}2`] = { marketId: `801.${fdEv}2`, eventId: fdEv, marketType: 'MATCH_HANDICAP_(2-WAY)', marketStatus: 'OPEN', inPlay: false, runners: [runner(i * 10 + 1, fdA, 'AWAY', -spread + (i === 1 ? -0.5 : 0), off(-110)), runner(i * 10 + 2, fdH, 'HOME', spread + (i === 1 ? 0.5 : 0), -110)] };
+    const players = [['A.J. Brown', 160], ['Rhamondre Stevenson', 210], ["D'Andre Swift", 190]] as const;
+    fdMarkets[`801.${fdEv}9`] = { marketId: `801.${fdEv}9`, eventId: fdEv, marketType: 'ANY_TIME_TOUCHDOWN_SCORER', marketStatus: 'OPEN', inPlay: false, runners: players.map(([n, a], k) => runner(900000 + i * 10 + k, n, '', 0, a + (i % 3) * 10)) };
     fdMarkets[`801.${fdEv}3`] = { marketId: `801.${fdEv}3`, eventId: fdEv, marketType: 'TOTAL_POINTS_(OVER/UNDER)', marketStatus: 'OPEN', inPlay: false, runners: [runner(i * 10 + 3, 'Over', 'OVER', total, -110), runner(i * 10 + 4, 'Under', 'UNDER', total, -110)] };
   });
   // Futures market FD mixes into the page: must be ignored.
@@ -110,6 +112,11 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
       const etag = `"v${fdVersion}"`;
       if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag }); return res.end(); }
       return send(200, fdPage(), { ETag: etag, 'Cache-Control': 'max-age=30' });
+    }
+    if (url.pathname === '/fd/event') {
+      if (!up.fd) return send(503, 'down');
+      const ev = Number(url.searchParams.get('eventId'));
+      return send(200, { attachments: { markets: Object.fromEntries(Object.entries(fdMarkets).filter(([, m]) => m.eventId === ev)) } });
     }
     if (url.pathname === '/fd/prices' && req.method === 'POST') {
       if (!up.fd) return send(503, 'down');
