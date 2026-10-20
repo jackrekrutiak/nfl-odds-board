@@ -1,10 +1,15 @@
 # NFL Odds Board — DraftKings vs FanDuel, live
 
-Pregame and in-game NFL moneyline, spread and total from **DraftKings** and **FanDuel**, normalized into one model and shown side by side. A toggle switches between **Best Price** (with the book underneath), **DraftKings** and **FanDuel**. Prices update on their own as lines move, games in progress are pinned in a **Live now** band at the top, and each book's freshness is on the page.
+Pregame and in-game NFL moneyline, spread and total, plus **player props** (anytime TD scorer and passing, rushing and receiving over/unders), from **DraftKings** and **FanDuel**, normalized into one model and shown side by side. A toggle switches between **Best Price** (with the book underneath), **DraftKings** and **FanDuel**. Prices update on their own as lines move, games in progress are pinned in a **Live now** band at the top, and each book's freshness is on the page.
 
-- **Live:** https://nfl-odds-board.onrender.com (Render free tier, Ohio; the first request after idle can take ~50 s to wake).- **Stack:** Node 22 + TypeScript, one runtime dependency (`ws`). No framework, no headless browser, no third-party odds API.
+Each game is a card: the matchup header is always visible, **Game lines** are open by default, and **Touchdowns, Passing, Rushing and Receiving** are boxed sections you open and close, each with a prop count. A **Line moves** feed lists every price change, and its history is kept on the server (Postgres when `DATABASE_URL` is set), so it survives a refresh or a deploy.
 
-![Board](docs/desktop.png)
+- **Live:** https://nfl-odds-board.onrender.com (Render free tier, Ohio; the first request after idle can take ~50 s to wake).
+- **Stack:** Node 22 + TypeScript, two runtime dependencies (`ws`, and `pg` for the optional history database). No framework, no headless browser, no third-party odds API.
+
+![Board: game card with Game lines, Touchdowns and Passing open](docs/desktop.png)
+
+*Screenshot from `npm run demo` (mock books); the live link shows the real slate.*
 
 ## TL;DR
 
@@ -14,6 +19,8 @@ Pregame and in-game NFL moneyline, spread and total from **DraftKings** and **Fa
 | How old is the number on screen? | **DraftKings:** measured from DK's own timestamps, see [Latency](#latency). **FanDuel:** FD publishes no timestamps, so it's a bound: ≤ poll interval + one round trip (≈ 2.1 s), shown on the page. |
 | Browser push | Server-Sent Events. One frame per upstream change, serialized once for all viewers, sent immediately. |
 | One book down? | Each book has its own state machine. The other keeps updating; the broken book's cells grey out with a banner saying how old they are. |
+| Player props? | Anytime TD and over/unders from both books, matched by player and stat; see [Player props](#player-props). |
+| Line history? | The server keeps recent moves and sends them with the snapshot; with `DATABASE_URL` set they're saved in Postgres and reloaded on start. See [Line history](#line-history). |
 | Third book? | Implement `BookAdapter` (4 methods) and register it. Store, best price, SSE and UI are book-agnostic. |
 
 ## Run it
@@ -24,11 +31,12 @@ Requires Node 22+.
 npm install
 npm run demo      # the real server + adapters against local mock books — no network needed
 npm run dev       # against the real books (REGION=us default; REGION=ca for Ontario)
-npm test          # 34 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
+npm test          # 40 tests, ~3 s, incl. end-to-end against the mock books (+3 on real captures, below)
 npm run probe     # "can this machine reach DK and FD?" — run on your laptop and on the host
 npm run capture   # record real payloads from both books into fixtures/ (then npm test checks them)
 npm run audit     # 15 min: does the DK push feed miss anything vs REST?
 npm run measure -- https://<your-app> 600   # watch a running board, print the latency table
+npx tsx scripts/probe-props.ts              # sample DraftKings' player-prop sections (REGION=ca from Canada)
 ```
 
 Open http://localhost:3000.
@@ -116,6 +124,37 @@ DraftKings delta gotchas, all covered by tests (`test/books.test.ts`):
 **The call: the line first, the price breaks ties.** For a side, `-3 -110` beats `-3.5 +100`; for totals, Over wants the lower number and Under the higher one. Line shoppers shop the number first, and in the NFL a half point — especially onto or off **3 and 7** — is worth more than 10 cents of juice.
 
 One exception, so it doesn't do anything silly: between non-key numbers, if the worse line pays ≥ 20 cents more per half point (e.g. `-5.5 -105` vs `-6 +120`), the price wins. Suspended prices never win. Hovering a cell shows the other book's line and price, and the per-book views show everything (`src/core/best.ts`, `test/core.test.ts`).
+
+## Player props
+
+Anytime TD scorer and the main over/unders from both books, for every NFL game on the board, compared per player and stat. Live on Oct 20 (28 game entries, 14 games): DraftKings 163 TD + 288 over/under prices, FanDuel 156 + 276, and 365 props priced at both books within seconds of startup.
+
+**Model.** No new layers, just new keys:
+
+| | Market | Side | Line |
+|---|---|---|---|
+| Anytime TD | `td_anytime` | `p:<player>` | none, so Best Price is the highest payout |
+| Over/under | `prop:<stat>`, e.g. `prop:passing_yds` | `p:<player>:over` / `:under` | the book's line; Best Price works like totals (Over wants the lower line) |
+
+Stats: passing yards, TDs, completions, attempts, interceptions; rushing yards, attempts; receiving yards, receptions; rush + receiving yards (`src/core/players.ts`).
+
+**Where each book keeps them** (both shapes taken from real responses on Oct 20, and those samples are in the tests):
+
+| | DraftKings | FanDuel |
+|---|---|---|
+| Source | Its league API's sections: TD Scorers (category 1003 / subcategory 12438) and every "… O/U" section under Passing, Rushing, Receiving, found in DraftKings' own section list | Each game's event page, tabs `td-scorer-props`, `passing-props`, `rushing-props`, `receiving-props` |
+| Shape | Market `<Player> <Stat> O/U`, selections `outcomeType` Over/Under with the line in `points`; TD market type 11019 | `PLAYER_X_<STAT>[_HIGH\|_MEDIUM\|_LOW]`, runners `result.type` OVER/UNDER with the line in `handicap`; TD `ANY_TIME_TOUCHDOWN_SCORER` |
+| Cadence | Every section every 10 s (`DK_PROPS_MS`), one request at a time | Structure: four tabs per game every 60 s (`FD_PROPS_MS`). Prices: the same uncached price channel as game lines, pregame every 10 s (`FD_PROP_PRICES_MS`), live at the 1 s live cadence |
+
+**Matching, and the accuracy rule.** A player key is the name with accents, punctuation and suffixes removed (`D'Andre Swift` → `dandre-swift`, `Luther Burden III` → `luther-burden`). Stats map by name. Anything that doesn't map (a new stat, a game we can't place) is left out, never guessed: a wrong match would put the wrong player's price in Best Price.
+
+**Left out on purpose:** ladders (DraftKings "Milestones", FanDuel `ALT_` markets), first/last TD scorer and 2+ TDs, and 1st-quarter props. They're the same pattern with a line dimension, but each needs its own Best-Price rule.
+
+**Freshness trade-off.** Hundreds of props per game, and they move less than sides and totals, so pregame props are read every 10 s. Live FanDuel props ride the 1 s live cadence. DraftKings props are fetched, not pushed: subscribing their sections on the socket is the next step (see [What I'd do next](#what-id-do-next)).
+
+## Line history
+
+The hub keeps the last 40 real price moves (a price or line that actually changed, not a first sighting) and sends them with the snapshot every browser gets on connect, so a refreshed page starts with recent history instead of a blank feed. With `DATABASE_URL` set, each move is also written to Postgres (`line_moves`: time, quote, previous price, as JSONB) and the newest 40 are loaded on startup, so history survives restarts and deploys. Writes are fire-and-forget, so a slow database never delays the live board, and if the database is down the board keeps running and logs the failed writes (`src/server/moves-db.ts`).
 
 ## Latency
 
@@ -211,7 +250,7 @@ The skew estimate checks itself too: `/api/metrics → books.draftkings.clockChe
 | Route | |
 |---|---|
 | `GET /api/stream` | SSE: `snapshot` on connect, then `delta` (changed quotes + prev + best), `status` every 2 s (health + metrics). Supports `Last-Event-ID`. |
-| `GET /api/board` | The whole normalized board as JSON |
+| `GET /api/board` | The whole normalized board as JSON (game lines, player props and the recent `moves`) |
 | `GET /api/metrics` | Per-book health, counters, latency percentiles, SSE clients |
 | `GET /api/time` | Server clock, for the browser's offset |
 | `POST /api/refresh` | Force a full re-read of both books (rate-limited) |
@@ -222,6 +261,7 @@ The skew estimate checks itself too: `/api/metrics → books.draftkings.clockChe
 Free tiers are enough; it must be an **always-on process** (it holds the DK socket), so not Vercel/Netlify functions.
 
 - **Render (free):** New → Blueprint → this repo. `render.yaml` sets Docker, Ohio, `/healthz`. Free instances sleep after 15 idle minutes, which would drop the DraftKings socket, so on Render the server requests its own public `/healthz` every 10 minutes (`RENDER_EXTERNAL_URL` is set by Render; `SELF_PING_MS=0` turns it off). GitHub's scheduled `keepalive.yml` is a backup only: its 10-minute schedule is best-effort and in practice ran far less often.
+- **History database (optional):** in Render, New → Postgres (same region), copy its *Internal Database URL* into the web service as `DATABASE_URL`, then deploy. The table is created on first start.
 - **Fly.io:** `fly launch --copy-config --no-deploy && fly deploy` (`fly.toml`: iad, 1 always-on machine).
 - **Run `npm run probe` on the host first** (Render shell / `fly ssh console`). After deploying, open `/api/metrics`: both books should be `live`. If DK shows a 403, that host's IPs are refused on the REST host — pick another host or region rather than working around it.
 
@@ -232,14 +272,15 @@ Free tiers are enough; it must be an **always-on process** (it holds the DK sock
 | Show the odds moving | **Done.** A changed price flashes green (better for the bettor) or red, the previous price stays struck through beside it for a minute, and a "Latest line moves" panel lists every change from either book. |
 | Latency on the page, per book | **Done.** Each book's chip says how old its numbers are right now: DraftKings "≈ N ms behind DraftKings" (its measured engine → server time plus this page's measured server → screen time), FanDuel "≤ N s old" (poll interval + round trip + server → screen), plus when each was last confirmed. Hovering a price shows when it last moved. |
 | Reconnects, retries, honest staleness | **Done.** Socket reconnects with backoff, REST fallback, `Last-Event-ID` replay for the browser, per-book STALE/DEGRADED chips, greyed cells, a banner with the last-confirmed time, and stale books excluded from Best Price. |
-| Props, alt lines, other leagues | **Designed, not built** (see below). |
+| Props | **Done** for anytime TD and the main over/unders, both books; see [Player props](#player-props). |
+| Alt lines, other leagues | **Designed, not built** (see below). |
 | A third book, or ten; where AI helps | **Written up** in the next section. |
 
-**Props, alt lines and other leagues: why not shipped, and exactly what it takes.** None of them is an architecture change; the adapters, store, best-price and SSE layers already handle any market keyed by game, market and side. They weren't shipped because every one needs parsers checked against real payloads, and an untested parser on the submission link is a bigger risk than the feature is worth.
+**Alt lines and other leagues: what it takes.** Neither is an architecture change; the adapters, store, best-price and SSE layers already handle any market keyed by game, market and side, as player props showed. Each needs parsers checked against real payloads first.
 
 - **Other leagues:** DraftKings is the same endpoints with a different league id (NBA 42648, NHL 42133, MLB 84240) and subscription; FanDuel is the same page with `customPageId=nba|nhl|mlb`. Needed: a team registry per league (nicknames are not unique across leagues: Giants, Cardinals, Rangers), a `league` field in the game key, market-name aliases ("Puck Line", "Run Line"), one adapter instance per book × league, and a league switch in the UI.
 - **Alt lines:** a market gets a `line` dimension in its key so several lines per side can coexist; DraftKings alt spreads/totals come from their own subcategory subscription, FanDuel from its alternate market types. Best price then compares like-for-like lines only.
-- **Props:** a new market family keyed by player + stat + line, which needs a player registry per league; the same never-guess matching rule applies to player names.
+- **More props:** ladders, first TD scorer and quarter props use the same keys plus a line or position dimension; other leagues need a player registry per league.
 
 **Hosting, as a future improvement:** the live site runs on Render's free tier, which sleeps after 15 idle minutes; the server pings its own public URL to stay awake. For production: an always-on instance (Render Starter, $7/month, or a small VM) in the region measured closest to the books, so the first viewer never waits for a cold start and the DraftKings socket is never dropped.
 
@@ -256,7 +297,8 @@ With more time, in this order:
 
 1. **Full Sunday slate: done (Oct 18).** It's measured above, and the delay sits inside DraftKings, worst early in games and in the standalone prime-time game, not under load. Next: find out why DraftKings holds early-game prices by splitting the delay by market type (moneyline, spread, total, quarter markets) to see which markets DraftKings holds, and showing each price's age on the board so users can see it.
 2. **Who moved first.** When both books change the same market, record which moved and how many milliseconds earlier. Over a Sunday this shows which book leads on which markets, and it gives a real estimate of FanDuel's delay, which today is only a bound because FanDuel publishes no timestamps. The store already sees every change with a receive time, so this is a small table plus a panel on the page.
-3. **Line history and a no-vig fair line.** Keep every price change (ClickHouse or Timescale off the same stream) and show the opening line, current line and a small trend per market. From the two books' prices, remove the bookmaker margin to get a fair price, and flag any price better than fair. That turns a price comparison into the start of edge detection.
+3. **Push DraftKings props, then the rest of the prop menu.** Subscribe DraftKings' prop sections on the same socket as game lines, bringing props from a 10 s fetch to the ~100 ms game lines get, with engine timestamps. Then ladders, first TD scorer and quarter props.
+4. **Line history and a no-vig fair line.** Moves are already kept (Postgres when configured); next is the opening line, current line and a small trend per market. From the two books' prices, remove the bookmaker margin to get a fair price, and flag any price better than fair. That turns a price comparison into the start of edge detection.
 
 After that:
 
