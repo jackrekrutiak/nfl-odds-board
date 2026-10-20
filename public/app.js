@@ -116,10 +116,12 @@ let pending = false;
 function schedule() {
   if (pending) return;
   pending = true;
-  const run = () => { pending = false; render(); };
-  // rAF pauses in background tabs; fall back to a timer so the board never freezes there.
+  let done = false;
+  const run = () => { if (done) return; done = true; pending = false; render(); };
+  // rAF can stall in hidden or occluded windows even when the page reports "visible";
+  // a timer backs it up so the board never freezes on "Connecting…".
   if (document.visibilityState === 'visible') requestAnimationFrame(run);
-  else setTimeout(run, 0);
+  setTimeout(run, document.visibilityState === 'visible' ? 250 : 0);
 }
 setInterval(schedule, 1000); // ages, flash expiry
 
