@@ -1,6 +1,6 @@
 import { BROWSER_UA, type Config } from '../../config.js';
 import type { BookHealth } from '../../core/types.js';
-import { backoff, fetchJson, HealthTracker, HttpError, type AdapterSink, type BookAdapter } from '../adapter.js';
+import { backoff, fetchJson, HealthTracker, HttpError, isObj, type AdapterSink, type BookAdapter } from '../adapter.js';
 import { FdBoard } from './normalize.js';
 
 /**
@@ -13,6 +13,7 @@ import { FdBoard } from './normalize.js';
  *      This is what makes FanDuel's number fresh: its age is bounded by our poll interval + one RTT.
  * Both feed the same store, which diffs, so the browser still only sees changes.
  */
+const PROP_TABS = ['td-scorer-props', 'passing-props', 'rushing-props', 'receiving-props'];
 const BATCH = 70; // larger batches are silently truncated by FanDuel
 
 export class FanDuelAdapter implements BookAdapter {
@@ -31,6 +32,7 @@ export class FanDuelAdapter implements BookAdapter {
   private pageHealthy = false; // last structure read succeeded (200 or 304)
   private lastPageAt = 0;
   private lastPregamePollAt = 0;
+  private lastPropPollAt = 0;
   private pagePromise: Promise<void> | null = null;
   private counters = { pageReads: 0, page304: 0, pageErrors: 0, pricePolls: 0, priceErrors: 0, priceUpdates: 0, unknownSelections: 0, propMarkets: 0 };
   private lastRtt: { page: number | null; prices: number | null } = { page: null, prices: null };
@@ -164,12 +166,18 @@ export class FanDuelAdapter implements BookAdapter {
     let markets = 0;
     for (const eventId of [...this.board.games.keys()]) {
       if (this.stopped) return;
-      const url = new URL(base);
-      url.searchParams.set('_ak', this.cfg.apiKey);
-      url.searchParams.set('eventId', eventId);
-      url.searchParams.set('tab', 'td-scorer-props');
-      const { body } = await fetchJson(url.toString(), { headers: this.headers(), timeoutMs: 8_000 });
-      markets += this.board.loadProps(eventId, body);
+      // One game's props live on four tabs; merge them so the game's prop set is replaced in one step.
+      const merged: Record<string, unknown> = {};
+      for (const tab of PROP_TABS) {
+        const url = new URL(base);
+        url.searchParams.set('_ak', this.cfg.apiKey);
+        url.searchParams.set('eventId', eventId);
+        url.searchParams.set('tab', tab);
+        const { body } = await fetchJson(url.toString(), { headers: this.headers(), timeoutMs: 8_000 });
+        const att = isObj(body) && isObj(body.attachments) && isObj(body.attachments.markets) ? body.attachments.markets : {};
+        Object.assign(merged, att);
+      }
+      markets += this.board.loadProps(eventId, { attachments: { markets: merged } });
     }
     this.counters.propMarkets = markets;
     this.publish();
@@ -197,8 +205,10 @@ export class FanDuelAdapter implements BookAdapter {
   private async readPrices(): Promise<void> {
     const started = Date.now();
     const pregameDue = started - this.lastPregamePollAt >= this.cfg.pricesMs - 50;
+    const propsDue = started - this.lastPropPollAt >= this.cfg.propPricesMs - 50;
     const live = this.board.marketIds('live');
-    const ids = pregameDue ? [...live, ...this.board.marketIds('pregame')] : live;
+    const ids = [...live, ...(pregameDue ? this.board.marketIds('pregame', 'game') : []), ...(propsDue ? this.board.marketIds('pregame', 'prop') : [])];
+    if (propsDue) this.lastPropPollAt = started;
     if (!ids.length) return;
     if (pregameDue) this.lastPregamePollAt = started;
     try {

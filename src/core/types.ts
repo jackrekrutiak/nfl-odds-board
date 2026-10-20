@@ -3,7 +3,8 @@
 export type BookId = 'draftkings' | 'fanduel';
 export const BOOKS: BookId[] = ['draftkings', 'fanduel'];
 
-export type MarketType = 'moneyline' | 'spread' | 'total' | 'td_anytime';
+/** Player props: 'td_anytime' (yes-only) and 'prop:<stat>' over/unders, e.g. 'prop:passing_yds' (see core/players.ts). */
+export type MarketType = 'moneyline' | 'spread' | 'total' | 'td_anytime' | `prop:${string}`;
 /** Game lines use away/home/over/under; player props use `p:<player key>` (see core/players.ts). */
 export type SideKey = 'away' | 'home' | 'over' | 'under' | `p:${string}`;
 

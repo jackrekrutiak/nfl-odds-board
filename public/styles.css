@@ -169,3 +169,8 @@ body { max-width: 1320px; margin: 0 auto; padding: 0 16px 20px; }
 .prop-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; padding-bottom: 10px; }
 .prop-row { display: grid; grid-template-columns: minmax(0, 1fr) 128px; align-items: center; gap: 8px; min-width: 0; }
 .prop-row .pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+
+.prop-stat h4 { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0 6px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted, #8b949e); font-weight: 600; }
+.prop-stat .ou-head { display: none; }
+.prop-row.ou { grid-template-columns: minmax(0, 1fr) 112px 112px; }
+.prop-stat:has(.prop-row.ou) .prop-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }

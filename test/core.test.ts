@@ -116,3 +116,12 @@ describe('DraftKings TD scorer props (shape from a real response, Oct 20)', () =
     expect(parseDkProps(real, () => undefined, ts)).toHaveLength(0);
   });
 });
+
+describe('best price for player over/unders', () => {
+  const q = (side: string, line: number, american: number) =>
+    ({ book: 'draftkings', gameKey: 'g', market: 'prop:rushing_yds', side, line, american, decimal: 2, suspended: false, sourceTs: 0, receivedTs: 0 }) as Quote;
+  it('Over wants the lower line, Under the higher', () => {
+    expect(pickBest([q('p:x:over', 58.5, -114), { ...q('p:x:over', 57.5, -120), book: 'fanduel' }])!.line).toBe(57.5);
+    expect(pickBest([q('p:x:under', 58.5, -114), { ...q('p:x:under', 57.5, -110), book: 'fanduel' }])!.line).toBe(58.5);
+  });
+});

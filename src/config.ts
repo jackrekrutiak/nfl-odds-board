@@ -49,6 +49,8 @@ export const config = {
     // Player props: each game's event page (structure) every FD_PROPS_MS; their prices ride the price channel.
     propsEnabled: bool(env.FD_PROPS_ENABLED, true),
     propsMs: num(env.FD_PROPS_MS, 60_000),
+    // Pregame prop prices: hundreds of markets, and they move less than sides/totals. Live props use the live cadence.
+    propPricesMs: num(env.FD_PROP_PRICES_MS, 10_000),
     eventUrl: env.FD_EVENT_URL,
   },
 

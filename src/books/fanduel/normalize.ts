@@ -24,6 +24,26 @@ export const PROP_TYPES: Record<string, MarketType> = {
 };
 const LINELESS = new Set<MarketType>(['moneyline', 'td_anytime']);
 
+/** Over/under player props: marketType PLAYER_X_<STAT>[_HIGH|_MEDIUM|_LOW], marketName "Caleb Williams - Passing Yds",
+ *  two runners with result.type OVER/UNDER and the line in handicap. ALT_ markets are ladders: left out for now. */
+const FD_STATS: Record<string, string> = {
+  PASSING_YARDS: 'passing_yds',
+  PASSING_TOUCHDOWNS: 'passing_tds',
+  PASSING_COMPLETIONS: 'pass_completions',
+  PASSING_ATTEMPTS: 'pass_attempts',
+  INTERCEPTIONS: 'interceptions',
+  RUSHING_YARDS: 'rushing_yds',
+  RUSHING_ATTEMPTS: 'rush_attempts',
+  RECEIVING_YARDS: 'receiving_yds',
+  RECEPTIONS: 'receptions',
+  'RUSHING_+_RECEIVING_YARDS': 'rush_rec_yds',
+};
+export function fdPropType(marketType: string): MarketType | null {
+  const m = /^PLAYER_X_(?!ALT_)(.+?)(?:_(?:HIGH|MEDIUM|LOW))?$/.exec(marketType);
+  const stat = m ? FD_STATS[m[1]!] : undefined;
+  return stat ? `prop:${stat}` : null;
+}
+
 export interface FdRunner {
   selectionId: string;
   player?: string;
@@ -105,12 +125,13 @@ export class FdBoard {
     const next = new Map<string, FdMarket>();
     for (const raw of Object.values(markets)) {
       if (!isObj(raw) || str(raw.eventId) !== eventId) continue;
-      const type = PROP_TYPES[str(raw.marketType) ?? ''];
+      const type = PROP_TYPES[str(raw.marketType) ?? ''] ?? fdPropType(str(raw.marketType) ?? '');
       const marketId = str(raw.marketId);
       if (!type || !marketId) continue;
+      const player = type.startsWith('prop:') ? (str(raw.marketName) ?? '').split(' - ')[0]!.trim() : '';
       const m: FdMarket = { marketId, eventId, type, suspended: isSuspended(raw.marketStatus), inPlay: raw.inPlay === true, runners: new Map() };
       for (const r of Array.isArray(raw.runners) ? raw.runners : []) {
-        const runner = toPropRunner(r);
+        const runner = type.startsWith('prop:') ? toOverUnderRunner(r, player) : toPropRunner(r);
         if (runner) m.runners.set(runner.selectionId, runner);
       }
       const old = this.propMarkets.get(marketId);
@@ -165,9 +186,10 @@ export class FdBoard {
     return { unknown, updated };
   }
 
-  marketIds(which: 'all' | 'live' | 'pregame' = 'all'): string[] {
+  marketIds(which: 'all' | 'live' | 'pregame' = 'all', kind: 'all' | 'game' | 'prop' = 'all'): string[] {
     const out: string[] = [];
-    for (const [id, m] of [...this.markets, ...this.propMarkets]) {
+    const pool = kind === 'game' ? [...this.markets] : kind === 'prop' ? [...this.propMarkets] : [...this.markets, ...this.propMarkets];
+    for (const [id, m] of pool) {
       const live = m.inPlay || this.games.get(m.eventId)?.live === true;
       if (which === 'all' || (which === 'live') === live) out.push(id);
     }
@@ -244,4 +266,16 @@ function toPropRunner(r: unknown): FdRunner | null {
   const key = playerKey(name);
   if (!key) return null;
   return { selectionId, player: name, side: `p:${key}`, line: null, ...odds, suspended: status === 'SUSPENDED' };
+}
+
+function toOverUnderRunner(r: unknown, player: string): FdRunner | null {
+  if (!isObj(r) || !player) return null;
+  const selectionId = str(r.selectionId);
+  const t = (isObj(r.result) ? (str(r.result.type) ?? '') : '').toLowerCase();
+  const odds = oddsOf(r.winRunnerOdds);
+  const line = numOr(r.handicap);
+  const status = (str(r.runnerStatus) ?? 'ACTIVE').toUpperCase();
+  const key = playerKey(player);
+  if (!selectionId || (t !== 'over' && t !== 'under') || !odds || line === undefined || line === null || !key || status === 'REMOVED' || status === 'CLOSED') return null;
+  return { selectionId, player, side: `p:${key}:${t}`, line, ...odds, suspended: status === 'SUSPENDED' };
 }

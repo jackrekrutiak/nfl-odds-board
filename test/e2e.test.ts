@@ -44,13 +44,19 @@ describe('end to end', { timeout: 30_000 }, () => {
   it('boots both books into one normalized board', async () => {
     await until(async () => (await stateOf('draftkings')) === 'live' && (await stateOf('fanduel')) === 'live');
     const b = await board();
-    expect(b.quotes.filter((q) => q.book === 'draftkings' && q.market !== 'td_anytime')).toHaveLength(36);
-    expect(b.quotes.filter((q) => q.book === 'fanduel' && q.market !== 'td_anytime')).toHaveLength(36);
+    expect(b.quotes.filter((q) => q.book === 'draftkings' && ['moneyline', 'spread', 'total'].includes(q.market))).toHaveLength(36);
+    expect(b.quotes.filter((q) => q.book === 'fanduel' && ['moneyline', 'spread', 'total'].includes(q.market))).toHaveLength(36);
     // Player props: Anytime TD, one yes-price per player, matched by player key, with the name for display.
     const props = b.quotes.filter((q) => q.market === 'td_anytime' && q.book === 'fanduel');
     expect(props).toHaveLength(18);
     expect(props.every((q) => q.side.startsWith('p:') && q.line === null && !!q.player)).toBe(true);
     expect(props.some((q) => q.side === 'p:dandre-swift' && q.player === "D'Andre Swift")).toBe(true);
+    // Over/under props: a stat market per player, Over and Under at the same line.
+    const ou = b.quotes.filter((q) => q.book === 'fanduel' && q.market.startsWith('prop:'));
+    expect(ou).toHaveLength(36);
+    const maye = ou.filter((q) => q.market === 'prop:passing_yds' && q.side.startsWith('p:drake-maye:') && q.gameKey === ou[0]!.gameKey);
+    expect(maye.map((q) => q.side).sort()).toEqual(['p:drake-maye:over', 'p:drake-maye:under']);
+    expect(maye[0]!.line).toBeGreaterThan(200);
     const dkKeys = new Set(b.quotes.filter((q) => q.book === 'draftkings').map((q) => q.gameKey));
     const fdKeys = new Set(b.quotes.filter((q) => q.book === 'fanduel').map((q) => q.gameKey));
     expect([...dkKeys].sort()).toEqual([...fdKeys].sort());

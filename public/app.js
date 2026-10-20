@@ -241,18 +241,36 @@ document.addEventListener('toggle', (e) => {
   const gk = e.target?.dataset?.props;
   if (gk) e.target.open ? openProps.add(gk) : openProps.delete(gk);
 }, true);
+const STAT_LABEL = { td_anytime: 'Anytime TD', passing_yds: 'Passing yds', passing_tds: 'Passing TDs', pass_completions: 'Completions', pass_attempts: 'Pass attempts', interceptions: 'Interceptions', rushing_yds: 'Rushing yds', rush_attempts: 'Rush attempts', receiving_yds: 'Receiving yds', receptions: 'Receptions', rush_rec_yds: 'Rush + rec yds' };
+const statOf = (market) => (market.startsWith('prop:') ? market.slice(5) : market);
 function propsHtml(g) {
-  const players = new Map();
-  const prefix = `${g.key}|td_anytime|`;
-  for (const [k, q] of state.quotes) if (k.startsWith(prefix)) {
-    const p = players.get(q.side) ?? { side: q.side, name: q.player ?? q.side.slice(2), best: Infinity };
-    p.best = Math.min(p.best, q.decimal);
-    players.set(q.side, p);
+  // market → player → { name, over/under or yes side }
+  const byStat = new Map();
+  for (const [k, q] of state.quotes) {
+    if (!k.startsWith(g.key + '|')) continue;
+    if (q.market !== 'td_anytime' && !q.market.startsWith('prop:')) continue;
+    const pk = q.side.split(':')[1];
+    const players = byStat.get(q.market) ?? new Map();
+    const p = players.get(pk) ?? { name: q.player ?? pk, line: null, sides: new Set() };
+    p.sides.add(q.side);
+    if (q.line !== null && q.line !== undefined) p.line = q.line;
+    players.set(pk, p);
+    byStat.set(q.market, players);
   }
-  if (!players.size) return '';
-  const rows = [...players.values()].sort((a, b) => a.best - b.best || a.name.localeCompare(b.name))
-    .map((p) => `<div class="prop-row"><span class="pname">${esc(p.name)}</span>${cellHtml(g.key, 'td_anytime', p.side)}</div>`).join('');
-  return `<details class="props" data-props="${esc(g.key)}"${openProps.has(g.key) ? ' open' : ''}><summary>Anytime TD scorer <span class="count">${players.size} players</span></summary><div class="prop-list">${rows}</div></details>`;
+  if (!byStat.size) return '';
+  let count = 0;
+  const order = Object.keys(STAT_LABEL);
+  const sections = [...byStat.entries()].sort((a, b) => order.indexOf(statOf(a[0])) - order.indexOf(statOf(b[0]))).map(([market, players]) => {
+    count += players.size;
+    const rows = [...players.entries()].sort((a, b) => (b[1].line ?? 0) - (a[1].line ?? 0) || a[1].name.localeCompare(b[1].name)).map(([pk, p]) => {
+      const cells = market === 'td_anytime'
+        ? cellHtml(g.key, market, `p:${pk}`)
+        : cellHtml(g.key, market, `p:${pk}:over`) + cellHtml(g.key, market, `p:${pk}:under`);
+      return `<div class="prop-row${market === 'td_anytime' ? '' : ' ou'}"><span class="pname">${esc(p.name)}</span>${cells}</div>`;
+    }).join('');
+    return `<section class="prop-stat"><h4>${esc(STAT_LABEL[statOf(market)] ?? statOf(market))}${market === 'td_anytime' ? '' : '<span class="ou-head"><span>Over</span><span>Under</span></span>'}</h4><div class="prop-list">${rows}</div></section>`;
+  }).join('');
+  return `<details class="props" data-props="${esc(g.key)}"${openProps.has(g.key) ? ' open' : ''}><summary>Player props <span class="count">${count} props</span></summary>${sections}</details>`;
 }
 
 function cellHtml(gk, market, side) {
@@ -295,7 +313,7 @@ function renderMoves() {
     const team = m.q.player ? esc(m.q.player) : !g ? '' : m.q.side === 'over' ? 'Over' : m.q.side === 'under' ? 'Under' : g[m.q.side]?.id ?? '';
     const matchup = g ? `${g.away.id} @ ${g.home.id}` : '';
     const since = now - m.at;
-    const mk = { spread: 'spread', total: 'total', moneyline: 'ML', td_anytime: 'anytime TD' }[m.q.market];
+    const mk = { spread: 'spread', total: 'total', moneyline: 'ML', td_anytime: 'anytime TD' }[m.q.market] ?? (STAT_LABEL[statOf(m.q.market)] ?? '').toLowerCase();
     return `<li${since < FLASH_MS ? ` class="fresh" style="animation-delay:-${since}ms"` : ''}><span class="badge ${m.q.book}">${BOOK_SHORT[m.q.book]}</span><span class="what"><b>${team}</b> ${mk} · ${matchup}</span><span class="t">${fmtAge(serverNow() - (m.at + state.offset)).replace(' ago', '')}</span>
       <span class="chg">${fmtLine(m.q.market, m.q.side, m.prev.line)}${fmtPrice(m.prev.american)} → <span class="${m.dir > 0 ? 'up' : 'down'}">${fmtLine(m.q.market, m.q.side, m.q.line)}${fmtPrice(m.q.american)} ${m.dir > 0 ? '▲' : '▼'}</span></span></li>`;
   }).join('');
@@ -306,6 +324,7 @@ function fmtPrice(a) { return a > 0 ? `+${a}` : `${a}`; }
 function fmtLine(market, side, line) {
   if (line === null || line === undefined || market === 'moneyline') return '';
   if (market === 'total') return `${side === 'over' ? 'O' : 'U'} ${line} `;
+  if (market.startsWith('prop:')) return `${side.endsWith(':over') ? 'O' : 'U'} ${line} `;
   return line === 0 ? 'PK ' : `${line > 0 ? '+' : ''}${line} `;
 }
 function fmtAge(ms) {
@@ -319,6 +338,7 @@ function fmtMs(ms) { return ms < 1000 ? `${Math.max(0, Math.round(ms))} ms` : `$
 function lineDir(q, prev) {
   // Better line for the bettor = up (green): spread number higher, Over total lower, Under total higher.
   if (q.market === 'total') return (q.side === 'over' ? prev.line - q.line : q.line - prev.line) > 0 ? 1 : -1;
+  if (q.market.startsWith('prop:')) return (q.side.endsWith(':over') ? prev.line - q.line : q.line - prev.line) > 0 ? 1 : -1;
   return q.line - prev.line > 0 ? 1 : -1;
 }
 function qkey(q) { return `${q.gameKey}|${q.market}|${q.side}|${q.book}`; }

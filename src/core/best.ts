@@ -42,6 +42,8 @@ function lineAdvantage(a: Quote, b: Quote): number {
   if (a.line === null || b.line === null) return 0;
   if (a.market === 'spread') return a.line - b.line;
   if (a.market === 'total') return a.side === 'over' ? b.line - a.line : a.line - b.line;
+  // Player over/unders work like totals: the Over wants the lower line, the Under the higher.
+  if (a.market.startsWith('prop:')) return a.side.endsWith(':over') ? b.line - a.line : a.line - b.line;
   return 0;
 }
 

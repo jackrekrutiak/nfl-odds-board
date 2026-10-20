@@ -77,6 +77,11 @@ export async function startMockBooks(port = 0, opts: { autoMove?: boolean } = {}
     fdMarkets[`801.${fdEv}2`] = { marketId: `801.${fdEv}2`, eventId: fdEv, marketType: 'MATCH_HANDICAP_(2-WAY)', marketStatus: 'OPEN', inPlay: false, runners: [runner(i * 10 + 1, fdA, 'AWAY', -spread + (i === 1 ? -0.5 : 0), off(-110)), runner(i * 10 + 2, fdH, 'HOME', spread + (i === 1 ? 0.5 : 0), -110)] };
     const players = [['A.J. Brown', 160], ['Rhamondre Stevenson', 210], ["D'Andre Swift", 190]] as const;
     fdMarkets[`801.${fdEv}9`] = { marketId: `801.${fdEv}9`, eventId: fdEv, marketType: 'ANY_TIME_TOUCHDOWN_SCORER', marketStatus: 'OPEN', inPlay: false, runners: players.map(([n, a], k) => runner(900000 + i * 10 + k, n, '', 0, a + (i % 3) * 10)) };
+    const ou = [['Drake Maye', 'PLAYER_X_PASSING_YARDS_HIGH', 'Passing Yds', 245.5], ['Rhamondre Stevenson', 'PLAYER_X_RUSHING_YARDS_HIGH', 'Rushing Yds', 58.5], ['A.J. Brown', 'PLAYER_X_RECEPTIONS_HIGH', 'Total Receptions', 5.5]] as const;
+    ou.forEach(([n, type, label, line], k) => {
+      const id = `801.${fdEv}8${k}`;
+      fdMarkets[id] = { marketId: id, eventId: fdEv, marketType: type, marketName: `${n} - ${label}`, marketStatus: 'OPEN', inPlay: false, runners: [runner(800000 + i * 10 + k * 2, `${n} Over`, 'OVER', line + (i % 2) * 0.5, -114), runner(800001 + i * 10 + k * 2, `${n} Under`, 'UNDER', line + (i % 2) * 0.5, -114)] } as (typeof fdMarkets)[string];
+    });
     fdMarkets[`801.${fdEv}3`] = { marketId: `801.${fdEv}3`, eventId: fdEv, marketType: 'TOTAL_POINTS_(OVER/UNDER)', marketStatus: 'OPEN', inPlay: false, runners: [runner(i * 10 + 3, 'Over', 'OVER', total, -110), runner(i * 10 + 4, 'Under', 'UNDER', total, -110)] };
   });
   // Futures market FD mixes into the page: must be ignored.
